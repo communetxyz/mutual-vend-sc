@@ -1,40 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {BaseTest, MockStablecoin} from '../BaseTest.sol';
 import {VendingMachine} from '../../src/contracts/VendingMachine.sol';
 import {VoteToken} from '../../src/contracts/VoteToken.sol';
 import {IVendingMachine} from '../../src/interfaces/IVendingMachine.sol';
-
-import {ERC20} from '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {IAccessControl} from '@openzeppelin/contracts/access/IAccessControl.sol';
-import {Test, console2} from 'forge-std/Test.sol';
 
-contract MockStablecoin is ERC20 {
-  constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
-
-  function mint(address to, uint256 amount) external {
-    _mint(to, amount);
-  }
-}
-
-contract VendingMachineTest is Test {
-  VendingMachine public vendingMachine;
-  VoteToken public voteToken;
-  MockStablecoin public usdc;
-  MockStablecoin public usdt;
-  MockStablecoin public dai;
-
-  address public owner = makeAddr('owner');
-  address public operator = makeAddr('operator');
-  address public treasury = makeAddr('treasury');
-  address public customer = makeAddr('customer');
-  address public nonOperator = makeAddr('nonOperator');
-  address public nonTreasury = makeAddr('nonTreasury');
-
-  uint8 constant NUM_TRACKS = 3;
-  uint256 constant MAX_STOCK = 50;
-
+contract VendingMachineTest is BaseTest {
+  // Events
   event TrackLoaded(uint8 indexed trackId, string itemName, string imageURI, uint256 quantity);
   event TrackRestocked(uint8 indexed trackId, uint256 additionalStock);
   event TrackPriceSet(uint8 indexed trackId, uint256 dollarPrice);
@@ -42,55 +17,30 @@ contract VendingMachineTest is Test {
   event ItemVended(uint8 indexed trackId, address indexed customer, address token, uint256 quantity, uint256 amount);
   event RevenueWithdrawn(address indexed token, address indexed to, uint256 amount);
 
-  function setUp() public {
-    vm.startPrank(owner);
-
-    usdc = new MockStablecoin('USD Coin', 'USDC');
-    usdt = new MockStablecoin('Tether', 'USDT');
-    dai = new MockStablecoin('Dai', 'DAI');
-
-    address[] memory acceptedTokens = new address[](3);
-    acceptedTokens[0] = address(usdc);
-    acceptedTokens[1] = address(usdt);
-    acceptedTokens[2] = address(dai);
-
-    IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
-    uint256[] memory initialStocks = new uint256[](0);
-    uint256[] memory initialPrices = new uint256[](0);
-
-    vendingMachine = new VendingMachine(
-      NUM_TRACKS,
-      MAX_STOCK,
-      'Vending Machine Token',
-      'VMT',
-      acceptedTokens,
-      initialProducts,
-      initialStocks,
-      initialPrices
-    );
-
-    voteToken = vendingMachine.voteToken();
-
-    vendingMachine.grantRole(vendingMachine.OPERATOR_ROLE(), operator);
-    vendingMachine.grantRole(vendingMachine.TREASURY_ROLE(), treasury);
-
-    vm.stopPrank();
-  }
-
   // Constructor tests
   function test_ConstructorWhenNumTracksIsZero() external {
     vm.startPrank(owner);
     
-    address[] memory acceptedTokens = new address[](1);
-    acceptedTokens[0] = address(usdc);
+    DeploymentConfig memory config = getDeploymentConfig();
+    config.numTracks = 0;
     
+    // Prepare empty deployment parameters
     IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
     uint256[] memory initialStocks = new uint256[](0);
     uint256[] memory initialPrices = new uint256[](0);
 
     // it reverts with InvalidTrackCount
     vm.expectRevert(IVendingMachine.InvalidTrackCount.selector);
-    new VendingMachine(0, MAX_STOCK, 'VMT', 'VMT', acceptedTokens, initialProducts, initialStocks, initialPrices);
+    new VendingMachine(
+      config.numTracks, 
+      config.maxStockPerTrack, 
+      config.tokenName, 
+      config.tokenSymbol, 
+      config.acceptedTokens, 
+      initialProducts, 
+      initialStocks, 
+      initialPrices
+    );
     
     vm.stopPrank();
   }
@@ -98,16 +48,26 @@ contract VendingMachineTest is Test {
   function test_ConstructorWhenMaxStockPerTrackIsZero() external {
     vm.startPrank(owner);
     
-    address[] memory acceptedTokens = new address[](1);
-    acceptedTokens[0] = address(usdc);
+    DeploymentConfig memory config = getDeploymentConfig();
+    config.maxStockPerTrack = 0;
     
+    // Prepare empty deployment parameters
     IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
     uint256[] memory initialStocks = new uint256[](0);
     uint256[] memory initialPrices = new uint256[](0);
 
     // it reverts with InvalidStock
     vm.expectRevert(IVendingMachine.InvalidStock.selector);
-    new VendingMachine(NUM_TRACKS, 0, 'VMT', 'VMT', acceptedTokens, initialProducts, initialStocks, initialPrices);
+    new VendingMachine(
+      config.numTracks,
+      config.maxStockPerTrack,
+      config.tokenName,
+      config.tokenSymbol,
+      config.acceptedTokens,
+      initialProducts,
+      initialStocks,
+      initialPrices
+    );
     
     vm.stopPrank();
   }
@@ -115,27 +75,39 @@ contract VendingMachineTest is Test {
   function test_ConstructorWhenInitialProductsArrayLengthExceedsNumTracks() external {
     vm.startPrank(owner);
     
-    address[] memory acceptedTokens = new address[](1);
-    acceptedTokens[0] = address(usdc);
+    DeploymentConfig memory config = getDeploymentConfig();
     
-    IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](NUM_TRACKS + 1);
-    for (uint8 i = 0; i <= NUM_TRACKS; i++) {
-      initialProducts[i] = IVendingMachine.Product({name: string(abi.encodePacked('Product', i)), imageURI: 'ipfs://product'});
+    // Create products exceeding num tracks
+    IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](config.numTracks + 1);
+    for (uint8 i = 0; i <= config.numTracks; i++) {
+      initialProducts[i] = IVendingMachine.Product({
+        name: string(abi.encodePacked('Product', i)), 
+        imageURI: 'ipfs://product'
+      });
     }
-    uint256[] memory initialStocks = new uint256[](NUM_TRACKS + 1);
-    for (uint8 i = 0; i <= NUM_TRACKS; i++) {
+    uint256[] memory initialStocks = new uint256[](config.numTracks + 1);
+    for (uint8 i = 0; i <= config.numTracks; i++) {
       initialStocks[i] = 10;
     }
-    uint256[] memory initialPrices = new uint256[](NUM_TRACKS + 1);
-    for (uint8 i = 0; i <= NUM_TRACKS; i++) {
+    uint256[] memory initialPrices = new uint256[](config.numTracks + 1);
+    for (uint8 i = 0; i <= config.numTracks; i++) {
       initialPrices[i] = 1e18;
     }
 
     // Constructor only processes up to NUM_TRACKS, ignores extra elements
-    VendingMachine newVendingMachine = new VendingMachine(NUM_TRACKS, MAX_STOCK, 'VMT', 'VMT', acceptedTokens, initialProducts, initialStocks, initialPrices);
+    VendingMachine newVendingMachine = new VendingMachine(
+      config.numTracks,
+      config.maxStockPerTrack,
+      config.tokenName,
+      config.tokenSymbol,
+      config.acceptedTokens,
+      initialProducts,
+      initialStocks,
+      initialPrices
+    );
     
     // Only NUM_TRACKS tracks should be initialized
-    for (uint8 i = 0; i < NUM_TRACKS; i++) {
+    for (uint8 i = 0; i < config.numTracks; i++) {
       IVendingMachine.Track memory track = newVendingMachine.getTrack(i);
       assertEq(track.product.name, string(abi.encodePacked('Product', i)));
       assertEq(track.stock, 10);
@@ -148,8 +120,7 @@ contract VendingMachineTest is Test {
   function test_ConstructorWhenArraysHaveMismatchedLengths() external {
     vm.startPrank(owner);
     
-    address[] memory acceptedTokens = new address[](1);
-    acceptedTokens[0] = address(usdc);
+    DeploymentConfig memory config = getDeploymentConfig();
     
     IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](2);
     initialProducts[0] = IVendingMachine.Product({name: 'Product1', imageURI: 'ipfs://1'});
@@ -161,7 +132,16 @@ contract VendingMachineTest is Test {
     initialPrices[1] = 2e18;
 
     // Constructor doesn't validate array length matching, it uses what's available
-    VendingMachine newVendingMachine = new VendingMachine(NUM_TRACKS, MAX_STOCK, 'VMT', 'VMT', acceptedTokens, initialProducts, initialStocks, initialPrices);
+    VendingMachine newVendingMachine = new VendingMachine(
+      config.numTracks,
+      config.maxStockPerTrack,
+      config.tokenName,
+      config.tokenSymbol,
+      config.acceptedTokens,
+      initialProducts,
+      initialStocks,
+      initialPrices
+    );
     
     // Track 0 should have product, stock, and price
     IVendingMachine.Track memory track0 = newVendingMachine.getTrack(0);
@@ -179,46 +159,66 @@ contract VendingMachineTest is Test {
   }
 
   function test_ConstructorWhenAllParametersAreValid() external {
-    vm.startPrank(owner);
+    // Create custom config with initial products
+    DeploymentConfig memory config;
+    config.numTracks = DEFAULT_NUM_TRACKS;
+    config.maxStockPerTrack = DEFAULT_MAX_STOCK;
+    config.tokenName = 'Test Token';
+    config.tokenSymbol = 'TT';
+    config.acceptedTokens = new address[](2);
+    config.acceptedTokens[0] = address(usdc);
+    config.acceptedTokens[1] = address(usdt);
     
-    address[] memory acceptedTokens = new address[](2);
-    acceptedTokens[0] = address(usdc);
-    acceptedTokens[1] = address(usdt);
-    
-    IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](2);
-    initialProducts[0] = IVendingMachine.Product({name: 'Product1', imageURI: 'ipfs://1'});
-    initialProducts[1] = IVendingMachine.Product({name: 'Product2', imageURI: 'ipfs://2'});
-    uint256[] memory initialStocks = new uint256[](2);
-    initialStocks[0] = 10;
-    initialStocks[1] = 20;
-    uint256[] memory initialPrices = new uint256[](2);
-    initialPrices[0] = 1e18;
-    initialPrices[1] = 2e18;
+    // Add initial products
+    config.products = new ProductConfig[](2);
+    config.products[0] = ProductConfig({
+      name: 'Product1',
+      ipfsHash: 'ipfs://1',
+      stock: 10,
+      price: 1e18
+    });
+    config.products[1] = ProductConfig({
+      name: 'Product2',
+      ipfsHash: 'ipfs://2',
+      stock: 20,
+      price: 2e18
+    });
 
-    // TrackLoaded events are not emitted in constructor, only in loadTrack
+    // Prepare deployment parameters
+    IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](config.products.length);
+    uint256[] memory initialStocks = new uint256[](config.products.length);
+    uint256[] memory initialPrices = new uint256[](config.products.length);
 
+    for (uint256 i = 0; i < config.products.length; i++) {
+      initialProducts[i] = IVendingMachine.Product(config.products[i].name, config.products[i].ipfsHash);
+      initialStocks[i] = config.products[i].stock;
+      initialPrices[i] = config.products[i].price;
+    }
+
+    vm.prank(owner);
     VendingMachine newVendingMachine = new VendingMachine(
-      NUM_TRACKS,
-      MAX_STOCK,
-      'Test Token',
-      'TT',
-      acceptedTokens,
+      config.numTracks,
+      config.maxStockPerTrack,
+      config.tokenName,
+      config.tokenSymbol,
+      config.acceptedTokens,
       initialProducts,
       initialStocks,
       initialPrices
     );
 
+    VoteToken newVoteToken = newVendingMachine.voteToken();
+
     // it sets NUM_TRACKS correctly
-    assertEq(newVendingMachine.NUM_TRACKS(), NUM_TRACKS);
+    assertEq(newVendingMachine.NUM_TRACKS(), config.numTracks);
     
     // it sets MAX_STOCK_PER_TRACK correctly
-    assertEq(newVendingMachine.MAX_STOCK_PER_TRACK(), MAX_STOCK);
+    assertEq(newVendingMachine.MAX_STOCK_PER_TRACK(), config.maxStockPerTrack);
     
     // it deploys and sets the vote token
-    assertNotEq(address(newVendingMachine.voteToken()), address(0));
+    assertNotEq(address(newVoteToken), address(0));
     
     // it grants MINTER_ROLE to the contract
-    VoteToken newVoteToken = newVendingMachine.voteToken();
     assertTrue(newVoteToken.hasRole(newVoteToken.MINTER_ROLE(), address(newVendingMachine)));
     
     // it initializes tracks with provided products
@@ -233,8 +233,6 @@ contract VendingMachineTest is Test {
     
     // it grants DEFAULT_ADMIN_ROLE to deployer
     assertTrue(newVendingMachine.hasRole(newVendingMachine.DEFAULT_ADMIN_ROLE(), owner));
-    
-    vm.stopPrank();
   }
 
   // LoadTrack tests
@@ -256,7 +254,7 @@ contract VendingMachineTest is Test {
 
     // it reverts with InvalidTrackId
     vm.expectRevert(IVendingMachine.InvalidTrackId.selector);
-    vendingMachine.loadTrack(NUM_TRACKS, product, 10);
+    vendingMachine.loadTrack(DEFAULT_NUM_TRACKS, product, 10);
   }
 
   function test_LoadTrackWhenStockExceedsMAX_STOCK_PER_TRACK() external {
@@ -266,7 +264,7 @@ contract VendingMachineTest is Test {
 
     // it reverts with InvalidStock
     vm.expectRevert(IVendingMachine.InvalidStock.selector);
-    vendingMachine.loadTrack(0, product, MAX_STOCK + 1);
+    vendingMachine.loadTrack(0, product, DEFAULT_MAX_STOCK + 1);
   }
 
   modifier whenCalledByOperator() {
@@ -332,7 +330,7 @@ contract VendingMachineTest is Test {
   function test_LoadMultipleTracksWhenAnyTrackIdIsInvalid() external whenCalledByOperator {
     uint8[] memory trackIds = new uint8[](2);
     trackIds[0] = 0;
-    trackIds[1] = NUM_TRACKS; // Invalid
+    trackIds[1] = DEFAULT_NUM_TRACKS; // Invalid
     IVendingMachine.Product[] memory products = new IVendingMachine.Product[](2);
     products[0] = IVendingMachine.Product({name: 'Soda', imageURI: 'ipfs://soda'});
     products[1] = IVendingMachine.Product({name: 'Chips', imageURI: 'ipfs://chips'});
@@ -354,7 +352,7 @@ contract VendingMachineTest is Test {
     products[1] = IVendingMachine.Product({name: 'Chips', imageURI: 'ipfs://chips'});
     uint256[] memory stocks = new uint256[](2);
     stocks[0] = 10;
-    stocks[1] = MAX_STOCK + 1; // Exceeds max
+    stocks[1] = DEFAULT_MAX_STOCK + 1; // Exceeds max
 
     // it reverts with InvalidStock
     vm.expectRevert(IVendingMachine.InvalidStock.selector);
@@ -400,7 +398,7 @@ contract VendingMachineTest is Test {
   function test_RestockTrackWhenTrackIdIsInvalid() external whenCalledByOperator {
     // it reverts with InvalidTrackId
     vm.expectRevert(IVendingMachine.InvalidTrackId.selector);
-    vendingMachine.restockTrack(NUM_TRACKS, 10);
+    vendingMachine.restockTrack(DEFAULT_NUM_TRACKS, 10);
   }
 
   function test_RestockTrackWhenNewTotalStockExceedsMAX_STOCK_PER_TRACK() external whenCalledByOperator {
@@ -439,7 +437,7 @@ contract VendingMachineTest is Test {
   function test_SetTrackPriceWhenTrackIdIsInvalid() external whenCalledByOperator {
     // it reverts with InvalidTrackId
     vm.expectRevert(IVendingMachine.InvalidTrackId.selector);
-    vendingMachine.setTrackPrice(NUM_TRACKS, 3e18);
+    vendingMachine.setTrackPrice(DEFAULT_NUM_TRACKS, 3e18);
   }
 
   function test_SetTrackPriceWhenParametersAreValid() external whenCalledByOperator {
@@ -515,7 +513,7 @@ contract VendingMachineTest is Test {
     vm.prank(customer);
     // it reverts with InvalidTrackId
     vm.expectRevert(IVendingMachine.InvalidTrackId.selector);
-    vendingMachine.vendFromTrack(NUM_TRACKS, address(usdc), customer);
+    vendingMachine.vendFromTrack(DEFAULT_NUM_TRACKS, address(usdc), customer);
   }
 
   function test_VendFromTrackWhenPriceIsNotSet() external {
@@ -721,9 +719,9 @@ contract VendingMachineTest is Test {
   }
 
   // GetTrack tests
-  function test_GetTrackWhenTrackIdIsInvalid() external {
+  function test_GetTrackWhenTrackIdIsInvalid() external view {
     // it returns empty track for invalid ID (no validation in view function)
-    IVendingMachine.Track memory track = vendingMachine.getTrack(NUM_TRACKS);
+    IVendingMachine.Track memory track = vendingMachine.getTrack(DEFAULT_NUM_TRACKS);
     assertEq(track.trackId, 0);
     assertEq(track.product.name, "");
     assertEq(track.product.imageURI, "");
@@ -748,9 +746,9 @@ contract VendingMachineTest is Test {
   }
 
   // GetTrackInventory tests
-  function test_GetTrackInventoryWhenTrackIdIsInvalid() external {
+  function test_GetTrackInventoryWhenTrackIdIsInvalid() external view {
     // it returns 0 for invalid track ID (no validation in view function)
-    uint256 inventory = vendingMachine.getTrackInventory(NUM_TRACKS);
+    uint256 inventory = vendingMachine.getTrackInventory(DEFAULT_NUM_TRACKS);
     assertEq(inventory, 0);
   }
 
@@ -768,7 +766,7 @@ contract VendingMachineTest is Test {
   // GetAllTracks tests
   function test_GetAllTracksWhenCalled() external {
     vm.startPrank(operator);
-    for (uint8 i = 0; i < NUM_TRACKS; i++) {
+    for (uint8 i = 0; i < DEFAULT_NUM_TRACKS; i++) {
       IVendingMachine.Product memory product = IVendingMachine.Product({
         name: string(abi.encodePacked('Product', i)),
         imageURI: string(abi.encodePacked('ipfs://', i))
@@ -781,8 +779,8 @@ contract VendingMachineTest is Test {
     // it returns array of all tracks
     IVendingMachine.Track[] memory allTracks = vendingMachine.getAllTracks();
 
-    assertEq(allTracks.length, NUM_TRACKS);
-    for (uint8 i = 0; i < NUM_TRACKS; i++) {
+    assertEq(allTracks.length, DEFAULT_NUM_TRACKS);
+    for (uint8 i = 0; i < DEFAULT_NUM_TRACKS; i++) {
       assertEq(allTracks[i].trackId, i);
       assertEq(allTracks[i].price, uint256(i + 1) * 1e18);
       assertEq(allTracks[i].stock, 10 + i);
@@ -790,16 +788,16 @@ contract VendingMachineTest is Test {
   }
 
   // IsTokenAccepted tests
-  function test_IsTokenAcceptedWhenCalledWithTokenAddress() external {
+  function test_IsTokenAcceptedWhenCalledWithTokenAddress() external view {
     // it returns acceptance status
     assertTrue(vendingMachine.isTokenAccepted(address(usdc)));
     assertTrue(vendingMachine.isTokenAccepted(address(usdt)));
     assertTrue(vendingMachine.isTokenAccepted(address(dai)));
-    assertFalse(vendingMachine.isTokenAccepted(makeAddr('randomToken')));
+    assertFalse(vendingMachine.isTokenAccepted(address(0x123)));
   }
 
   // GetAcceptedTokens tests
-  function test_GetAcceptedTokensWhenCalled() external {
+  function test_GetAcceptedTokensWhenCalled() external view {
     // it returns array of accepted tokens
     address[] memory tokens = vendingMachine.getAcceptedTokens();
 
