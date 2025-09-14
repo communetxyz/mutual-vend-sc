@@ -7,4 +7,6 @@ import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
 interface IVoteToken is IERC20, IVotes {
     function mint(address to, uint256 amount) external;
     function burn(uint256 amount) external;
+    function grantRole(bytes32 role, address account) external;
+    function MINTER_ROLE() external view returns (bytes32);
 }

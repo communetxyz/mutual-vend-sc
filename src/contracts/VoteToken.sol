@@ -17,6 +17,10 @@ contract VoteToken is ERC20, ERC20Permit, ERC20Votes, AccessControl, IVoteToken 
     ) ERC20(name, symbol) ERC20Permit(name) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
+    
+    function grantRole(bytes32 role, address account) public override(AccessControl, IVoteToken) onlyRole(getRoleAdmin(role)) {
+        _grantRole(role, account);
+    }
 
     function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
         _mint(to, amount);

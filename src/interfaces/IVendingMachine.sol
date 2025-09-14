@@ -5,12 +5,13 @@ interface IVendingMachine {
     struct Product {
         string name;
         string imageURI;
-        uint256 price;
     }
 
     struct Track {
         uint8 trackId;
         Product product;
+        uint256 price;
+        uint256 stock;
     }
 
     error InvalidTrackId();
@@ -35,8 +36,8 @@ interface IVendingMachine {
     event ItemVended(uint8 indexed trackId, address indexed customer, address token, uint256 quantity, uint256 amount);
     event RevenueWithdrawn(address indexed token, address indexed to, uint256 amount);
 
-    function loadTrack(uint8 trackId, Product memory product, uint256 initialStock) external;
-    function loadMultipleTracks(uint8[] calldata trackIds, Product[] calldata products, uint256[] calldata initialStocks) external;
+    function loadTrack(uint8 trackId, Product memory product, uint256 stock) external;
+    function loadMultipleTracks(uint8[] calldata trackIds, Product[] calldata products, uint256[] calldata stocks) external;
     function restockTrack(uint8 trackId, uint256 additionalStock) external;
     function setTrackPrice(uint8 trackId, uint256 dollarPrice) external;
     function configurePaymentTokens(address[] calldata tokens) external;

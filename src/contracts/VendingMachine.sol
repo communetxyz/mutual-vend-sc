@@ -6,7 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IVendingMachine} from "../interfaces/IVendingMachine.sol";
-import {IVoteToken} from "../interfaces/IVoteToken.sol";
+import {VoteToken} from "./VoteToken.sol";
 
 contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     using SafeERC20 for IERC20;
@@ -15,18 +15,41 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     bytes32 public constant TREASURY_ROLE = keccak256("TREASURY_ROLE");
 
     uint8 public immutable NUM_TRACKS;
-    IVoteToken public immutable voteToken;
+    uint256 public immutable MAX_STOCK_PER_TRACK;
+    VoteToken public immutable voteToken;
+    address[] public acceptedTokenList;
 
     mapping(uint8 => Track) private tracks;
     mapping(address => bool) private acceptedTokens;
-    mapping(uint8 => uint256) private trackInventory;
 
-    constructor(uint8 _numTracks, address _voteToken) {
+    constructor(
+        uint8 _numTracks,
+        uint256 _maxStockPerTrack,
+        string memory _voteTokenName,
+        string memory _voteTokenSymbol,
+        address[] memory _initialAcceptedTokens
+    ) {
         if (_numTracks == 0) revert InvalidTrackCount();
-        if (_voteToken == address(0)) revert ZeroAddress();
+        if (_maxStockPerTrack == 0) revert InvalidStock();
         
         NUM_TRACKS = _numTracks;
-        voteToken = IVoteToken(_voteToken);
+        MAX_STOCK_PER_TRACK = _maxStockPerTrack;
+        
+        // Deploy vote token and grant minter role to this contract
+        voteToken = new VoteToken(_voteTokenName, _voteTokenSymbol);
+        voteToken.grantRole(voteToken.MINTER_ROLE(), address(this));
+        
+        // Initialize tracks
+        for (uint8 i = 0; i < _numTracks; i++) {
+            tracks[i].trackId = i;
+        }
+        
+        // Set initial accepted tokens
+        acceptedTokenList = _initialAcceptedTokens;
+        for (uint256 i = 0; i < _initialAcceptedTokens.length; i++) {
+            if (_initialAcceptedTokens[i] == address(0)) revert ZeroAddress();
+            acceptedTokens[_initialAcceptedTokens[i]] = true;
+        }
         
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(OPERATOR_ROLE, msg.sender);
@@ -36,43 +59,36 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     function loadTrack(
         uint8 trackId,
         Product memory product,
-        uint256 initialStock
+        uint256 stock
     ) external onlyRole(OPERATOR_ROLE) {
         _validateTrackId(trackId);
-        _validateProduct(product);
-        if (initialStock == 0) revert InvalidStock();
+        if (stock > MAX_STOCK_PER_TRACK) revert InvalidStock();
         
-        tracks[trackId] = Track({
-            trackId: trackId,
-            product: product
-        });
-        trackInventory[trackId] = initialStock;
+        // Allow empty product to clear track, otherwise overwrite existing product
+        tracks[trackId].product = product;
+        tracks[trackId].stock = stock;
         
-        emit TrackLoaded(trackId, product.name, product.imageURI, initialStock);
+        emit TrackLoaded(trackId, product.name, product.imageURI, stock);
     }
 
     function loadMultipleTracks(
         uint8[] calldata trackIds,
         Product[] calldata products,
-        uint256[] calldata initialStocks
+        uint256[] calldata stocks
     ) external onlyRole(OPERATOR_ROLE) {
         uint256 length = trackIds.length;
-        if (length != products.length || length != initialStocks.length) {
+        if (length != products.length || length != stocks.length) {
             revert ArrayLengthMismatch();
         }
         
         for (uint256 i = 0; i < length; i++) {
             _validateTrackId(trackIds[i]);
-            _validateProduct(products[i]);
-            if (initialStocks[i] == 0) revert InvalidStock();
+            if (stocks[i] > MAX_STOCK_PER_TRACK) revert InvalidStock();
             
-            tracks[trackIds[i]] = Track({
-                trackId: trackIds[i],
-                product: products[i]
-            });
-            trackInventory[trackIds[i]] = initialStocks[i];
+            tracks[trackIds[i]].product = products[i];
+            tracks[trackIds[i]].stock = stocks[i];
             
-            emit TrackLoaded(trackIds[i], products[i].name, products[i].imageURI, initialStocks[i]);
+            emit TrackLoaded(trackIds[i], products[i].name, products[i].imageURI, stocks[i]);
         }
     }
 
@@ -82,9 +98,11 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     ) external onlyRole(OPERATOR_ROLE) {
         _validateTrackId(trackId);
         if (additionalStock == 0) revert InvalidStock();
-        if (bytes(tracks[trackId].product.name).length == 0) revert TrackNotConfigured();
         
-        trackInventory[trackId] += additionalStock;
+        uint256 newStock = tracks[trackId].stock + additionalStock;
+        if (newStock > MAX_STOCK_PER_TRACK) revert InvalidStock();
+        
+        tracks[trackId].stock = newStock;
         
         emit TrackRestocked(trackId, additionalStock);
     }
@@ -95,9 +113,8 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     ) external onlyRole(OPERATOR_ROLE) {
         _validateTrackId(trackId);
         if (dollarPrice == 0) revert InvalidPrice();
-        if (bytes(tracks[trackId].product.name).length == 0) revert TrackNotConfigured();
         
-        tracks[trackId].product.price = dollarPrice;
+        tracks[trackId].price = dollarPrice;
         
         emit TrackPriceSet(trackId, dollarPrice);
     }
@@ -105,6 +122,7 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     function configurePaymentTokens(
         address[] calldata tokens
     ) external onlyRole(OPERATOR_ROLE) {
+        // Validate tokens
         for (uint256 i = 0; i < tokens.length; i++) {
             if (tokens[i] == address(0)) revert ZeroAddress();
             
@@ -113,12 +131,14 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
             }
         }
         
-        address[] memory previousTokens = _getAcceptedTokens();
-        for (uint256 i = 0; i < previousTokens.length; i++) {
-            acceptedTokens[previousTokens[i]] = false;
-            emit TokenAcceptanceUpdated(previousTokens[i], false);
+        // Clear existing accepted tokens
+        for (uint256 i = 0; i < acceptedTokenList.length; i++) {
+            acceptedTokens[acceptedTokenList[i]] = false;
+            emit TokenAcceptanceUpdated(acceptedTokenList[i], false);
         }
         
+        // Set new accepted tokens
+        acceptedTokenList = tokens;
         for (uint256 i = 0; i < tokens.length; i++) {
             acceptedTokens[tokens[i]] = true;
             emit TokenAcceptanceUpdated(tokens[i], true);
@@ -130,22 +150,24 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
         address token,
         address recipient
     ) external nonReentrant returns (uint256) {
-        _validateTrackId(trackId);
         if (!acceptedTokens[token]) revert TokenNotAccepted();
-        if (recipient == address(0)) revert ZeroAddress();
+        // Allow recipient to be 0 address for burning
         
-        Track memory track = tracks[trackId];
-        if (bytes(track.product.name).length == 0) revert TrackNotConfigured();
-        if (track.product.price == 0) revert PriceNotSet();
-        if (trackInventory[trackId] == 0) revert InsufficientStock();
+        Track storage track = tracks[trackId];
+        if (track.stock == 0) revert InsufficientStock();
+        if (track.price == 0) revert PriceNotSet();
         
-        uint256 price = track.product.price * 1e6;
+        // Price is already in 1e18 format
+        uint256 price = track.price;
         
         IERC20(token).safeTransferFrom(msg.sender, address(this), price);
         
-        trackInventory[trackId]--;
+        track.stock--;
         
-        voteToken.mint(recipient, price);
+        // Mint vote tokens to recipient (or 0 address for burn)
+        if (recipient != address(0)) {
+            voteToken.mint(recipient, price);
+        }
         
         emit ItemVended(trackId, msg.sender, token, 1, price);
         
@@ -169,13 +191,13 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     }
 
     function getTrack(uint8 trackId) external view returns (Track memory) {
-        _validateTrackId(trackId);
+        // No validation needed per comment
         return tracks[trackId];
     }
 
     function getTrackInventory(uint8 trackId) external view returns (uint256) {
-        _validateTrackId(trackId);
-        return trackInventory[trackId];
+        // No validation needed per comment
+        return tracks[trackId].stock;
     }
 
     function isTokenAccepted(address token) external view returns (bool) {
@@ -190,34 +212,11 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
         return allTracks;
     }
 
+    function getAcceptedTokens() external view returns (address[] memory) {
+        return acceptedTokenList;
+    }
+
     function _validateTrackId(uint8 trackId) private view {
         if (trackId >= NUM_TRACKS) revert InvalidTrackId();
-    }
-
-    function _validateProduct(Product memory product) private pure {
-        if (bytes(product.name).length == 0) revert InvalidProductName();
-        if (product.price == 0) revert InvalidPrice();
-    }
-
-    function _getAcceptedTokens() private view returns (address[] memory) {
-        address[] memory tokens = new address[](100);
-        uint256 count = 0;
-        
-        address[] memory commonTokens = new address[](3);
-        commonTokens[0] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; // USDC
-        commonTokens[1] = 0xdAC17F958D2ee523a2206206994597C13D831ec7; // USDT
-        commonTokens[2] = 0x6B175474E89094C44Da98b954EedeAC495271d0F; // DAI
-        
-        for (uint256 i = 0; i < commonTokens.length; i++) {
-            if (acceptedTokens[commonTokens[i]]) {
-                tokens[count++] = commonTokens[i];
-            }
-        }
-        
-        assembly {
-            mstore(tokens, count)
-        }
-        
-        return tokens;
     }
 }
