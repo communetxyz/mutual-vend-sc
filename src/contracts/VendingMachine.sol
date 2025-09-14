@@ -140,6 +140,7 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
   }
 
   function vendFromTrack(uint8 trackId, address token, address recipient) external nonReentrant returns (uint256) {
+    _validateTrackId(trackId);
     if (!acceptedTokens[token]) revert TokenNotAccepted();
 
     Track storage track = tracks[trackId];

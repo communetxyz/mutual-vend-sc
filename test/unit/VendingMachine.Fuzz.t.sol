@@ -258,17 +258,18 @@ contract VendingMachineFuzzTest is Test {
 
     if (cleanCount == 0) return;
 
-    // Resize array
-    assembly {
-      mstore(cleanTokens, cleanCount)
+    // Create a new array of the correct size and copy elements
+    address[] memory finalTokens = new address[](cleanCount);
+    for (uint256 i = 0; i < cleanCount; i++) {
+      finalTokens[i] = cleanTokens[i];
     }
 
     vm.prank(operator);
-    vendingMachine.configurePaymentTokens(cleanTokens);
+    vendingMachine.configurePaymentTokens(finalTokens);
 
     // Verify all tokens are accepted
     for (uint256 i = 0; i < cleanCount; i++) {
-      assertTrue(vendingMachine.isTokenAccepted(cleanTokens[i]));
+      assertTrue(vendingMachine.isTokenAccepted(finalTokens[i]));
     }
 
     // Verify old tokens are not accepted
