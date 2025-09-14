@@ -8,22 +8,22 @@
   ],
   "products": [
     {
-      "name": "Coca Cola",
-      "ipfsHash": "ipfs://QmCocaCola",
-      "stock": 10,
-      "price": "200000000000000000"
+      "name": "Protein Bars and Beef Jerky",
+      "ipfsHash": "https://ava.com.sa/sys/storage/uploads/is_cover_image/PXL_20250914_125533552_1757855386.jpg",
+      "stock": 6,
+      "price": "1500000000000000000"
     },
     {
-      "name": "Pepsi",
-      "ipfsHash": "ipfs://QmPepsi",
-      "stock": 10,
-      "price": "200000000000000000"
+      "name": "Milano Cookies and Oreos",
+      "ipfsHash": "https://ava.com.sa/sys/storage/uploads/is_cover_image/PXL_20250914_125350628_1757855467.jpg",
+      "stock": 7,
+      "price": "1500000000000000000"
     },
     {
-      "name": "Water",
-      "ipfsHash": "ipfs://QmWater",
-      "stock": 10,
-      "price": "200000000000000000"
+      "name": "5$ Crypto Vending Machine Wallets",
+      "ipfsHash": "https://ava.com.sa/sys/storage/uploads/is_cover_image/PXL_20250914_125325408%20(1)_1757855751.jpg",
+      "stock": 4,
+      "price": "5000000000000000000"
     }
   ]
 }
