@@ -144,8 +144,8 @@ jobs:
           # Export the VendingMachine address for the purchase script
           export VENDING_MACHINE_ADDRESS=${{ steps.deploy.outputs.VENDING_ADDRESS }}
           
-          # Check if deployer has token balance
-          DEPLOYER_ADDRESS="${{ secrets.MAINNET_DEPLOYER_ADDRESS }}"
+          # Get deployer address from private key
+          DEPLOYER_ADDRESS=$(cast wallet address $PRIVATE_KEY)
           TOKEN_ADDRESS="0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3"
           
           echo "Checking token balance for deployer: $DEPLOYER_ADDRESS"
@@ -211,7 +211,7 @@ jobs:
             "metadata": {
               "timestamp": "$TIMESTAMP",
               "commitHash": "${{ github.sha }}",
-              "deployer": "${{ secrets.MAINNET_DEPLOYER_ADDRESS }}",
+              "deployer": "$(cast wallet address $PRIVATE_KEY)",
               "rpcUrl": "https://rpc.gnosischain.com",
               "explorerUrl": "https://gnosisscan.io",
               "acceptedTokens": ["0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3"]
@@ -238,7 +238,7 @@ jobs:
           echo "| VoteToken | \`${{ steps.deploy.outputs.TOKEN_ADDRESS }}\` | [View](${{ steps.network-env.outputs.EXPLORER_URL }}/address/${{ steps.deploy.outputs.TOKEN_ADDRESS }}) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
-          echo "- Deployer: \`${{ secrets.MAINNET_DEPLOYER_ADDRESS }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Deployer: \`$(cast wallet address $PRIVATE_KEY)\`" >> $GITHUB_STEP_SUMMARY
           echo "- Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           if [ -n "${{ steps.deploy.outputs.DEPLOY_TX_HASH }}" ]; then
