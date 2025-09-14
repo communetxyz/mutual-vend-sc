@@ -77,8 +77,18 @@ jobs:
           VENDING_ADDRESS=$(echo "$OUTPUT" | grep -o "VendingMachine deployed at: 0x[a-fA-F0-9]*" | awk '{print $4}')
           TOKEN_ADDRESS=$(echo "$OUTPUT" | grep -o "VoteToken deployed at: 0x[a-fA-F0-9]*" | awk '{print $4}')
           
+          # Extract transaction hash from broadcast file
+          BROADCAST_FILE="broadcast/DeployVendingMachine.s.sol/$CHAIN_ID/run-latest.json"
+          if [ -f "$BROADCAST_FILE" ]; then
+            DEPLOY_TX_HASH=$(cat $BROADCAST_FILE | jq -r '.transactions[] | select(.contractName == "VendingMachine") | .hash' | head -1)
+            echo "Deployment transaction hash: $DEPLOY_TX_HASH"
+          else
+            DEPLOY_TX_HASH=""
+          fi
+          
           echo "VENDING_ADDRESS=$VENDING_ADDRESS" >> $GITHUB_OUTPUT
           echo "TOKEN_ADDRESS=$TOKEN_ADDRESS" >> $GITHUB_OUTPUT
+          echo "DEPLOY_TX_HASH=$DEPLOY_TX_HASH" >> $GITHUB_OUTPUT
 
       - name: Wait for blockchain indexing
         if: ${{ github.event.inputs.verify == 'true' || github.event.inputs.verify == null }}
@@ -169,6 +179,9 @@ jobs:
           echo "- Deployer: \`${{ secrets.MAINNET_DEPLOYER_ADDRESS }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.deploy.outputs.DEPLOY_TX_HASH }}" ]; then
+            echo "- Deployment Tx: [\`${{ steps.deploy.outputs.DEPLOY_TX_HASH }}\`](${{ steps.network-env.outputs.EXPLORER_URL }}/tx/${{ steps.deploy.outputs.DEPLOY_TX_HASH }})" >> $GITHUB_STEP_SUMMARY
+          fi
           if [ "${{ github.event_name }}" == "release" ]; then
             echo "- Release: \`${{ github.event.release.tag_name }}\`" >> $GITHUB_STEP_SUMMARY
           fi
@@ -195,22 +208,29 @@ jobs:
           script: |
             const vendingAddress = '${{ steps.deploy.outputs.VENDING_ADDRESS }}';
             const tokenAddress = '${{ steps.deploy.outputs.TOKEN_ADDRESS }}';
+            const deployTxHash = '${{ steps.deploy.outputs.DEPLOY_TX_HASH }}';
             const explorerUrl = '${{ steps.network-env.outputs.EXPLORER_URL }}';
             const purchaseTx = '${{ steps.test-purchase.outputs.PURCHASE_TX }}';
             
             let comment = `## 🚀 Deployed to Gnosis Chain
             
+            ### Contract Addresses
             **VendingMachine**: [${vendingAddress}](${explorerUrl}/address/${vendingAddress})
             **VoteToken**: [${tokenAddress}](${explorerUrl}/address/${tokenAddress})
-            `;
+            
+            ### Transaction Details`;
+            
+            if (deployTxHash) {
+              comment += `\n📝 **Deployment Tx**: [${deployTxHash}](${explorerUrl}/tx/${deployTxHash})`;
+            }
             
             if (purchaseTx) {
-              comment += `\n✅ **Test Purchase**: [${purchaseTx}](${explorerUrl}/tx/${purchaseTx})`;
+              comment += `\n✅ **Test Purchase Tx**: [${purchaseTx}](${explorerUrl}/tx/${purchaseTx})`;
             } else {
               comment += `\n✅ **Test Purchase**: Validated successfully`;
             }
             
-            comment += `\n\nDeployed from commit: ${context.sha}`;
+            comment += `\n\n**Deployed from commit**: ${context.sha}`;
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
