@@ -11,19 +11,19 @@
       "name": "Coca Cola",
       "ipfsHash": "ipfs://QmCocaCola",
       "stock": 10,
-      "price": "2000000000000000000"
+      "price": "200000000000000000"
     },
     {
       "name": "Pepsi",
       "ipfsHash": "ipfs://QmPepsi",
       "stock": 10,
-      "price": "2000000000000000000"
+      "price": "200000000000000000"
     },
     {
       "name": "Water",
       "ipfsHash": "ipfs://QmWater",
       "stock": 10,
-      "price": "1000000000000000000"
+      "price": "200000000000000000"
     }
   ]
 }

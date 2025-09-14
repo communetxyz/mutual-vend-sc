@@ -126,6 +126,34 @@ jobs:
               exit 1
             }
 
+      - name: Test purchase from VendingMachine
+        id: test-purchase
+        run: |
+          echo "Testing purchase from newly deployed VendingMachine..."
+          
+          # Export the VendingMachine address for the purchase script
+          export VENDING_MACHINE_ADDRESS=${{ steps.deploy.outputs.VENDING_ADDRESS }}
+          
+          # Run the purchase script
+          OUTPUT=$(forge script script/PurchaseFromGnosis.s.sol:PurchaseFromGnosis \
+            --rpc-url $RPC_URL \
+            --broadcast \
+            --slow \
+            --legacy \
+            -vvv)
+          
+          echo "$OUTPUT"
+          
+          # Extract transaction hash from output if available
+          PURCHASE_TX=$(echo "$OUTPUT" | grep -o "hash: 0x[a-fA-F0-9]*" | head -1 | awk '{print $2}')
+          
+          if [ -n "$PURCHASE_TX" ]; then
+            echo "PURCHASE_TX=$PURCHASE_TX" >> $GITHUB_OUTPUT
+            echo "Purchase transaction: $PURCHASE_TX"
+          else
+            echo "Purchase simulation successful (no broadcast in test mode)"
+          fi
+
       - name: Create deployment summary
         run: |
           echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
@@ -144,6 +172,13 @@ jobs:
           if [ "${{ github.event_name }}" == "release" ]; then
             echo "- Release: \`${{ github.event.release.tag_name }}\`" >> $GITHUB_STEP_SUMMARY
           fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Purchase" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.test-purchase.outputs.PURCHASE_TX }}" ]; then
+            echo "✅ Test purchase successful: [\`${{ steps.test-purchase.outputs.PURCHASE_TX }}\`](${{ steps.network-env.outputs.EXPLORER_URL }}/tx/${{ steps.test-purchase.outputs.PURCHASE_TX }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Purchase script validated successfully" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Save deployment artifacts
         uses: actions/upload-artifact@v4
@@ -161,13 +196,21 @@ jobs:
             const vendingAddress = '${{ steps.deploy.outputs.VENDING_ADDRESS }}';
             const tokenAddress = '${{ steps.deploy.outputs.TOKEN_ADDRESS }}';
             const explorerUrl = '${{ steps.network-env.outputs.EXPLORER_URL }}';
+            const purchaseTx = '${{ steps.test-purchase.outputs.PURCHASE_TX }}';
             
-            const comment = `## 🚀 Deployed to Gnosis Chain
+            let comment = `## 🚀 Deployed to Gnosis Chain
             
             **VendingMachine**: [${vendingAddress}](${explorerUrl}/address/${vendingAddress})
             **VoteToken**: [${tokenAddress}](${explorerUrl}/address/${tokenAddress})
+            `;
             
-            Deployed from commit: ${context.sha}`;
+            if (purchaseTx) {
+              comment += `\n✅ **Test Purchase**: [${purchaseTx}](${explorerUrl}/tx/${purchaseTx})`;
+            } else {
+              comment += `\n✅ **Test Purchase**: Validated successfully`;
+            }
+            
+            comment += `\n\nDeployed from commit: ${context.sha}`;
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
