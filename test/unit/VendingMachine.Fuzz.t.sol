@@ -344,7 +344,7 @@ contract VendingMachineFuzzTest is Test {
       if (restockAmount == 0) continue;
 
       // Check if adding would exceed MAX_STOCK
-      bool wouldExceed = currentStock > MAX_STOCK || (restockAmount > 0 && restockAmount > MAX_STOCK - currentStock);
+      bool wouldExceed = currentStock + restockAmount > MAX_STOCK;
 
       if (wouldExceed) {
         vm.expectRevert(IVendingMachine.InvalidStock.selector);
