@@ -77,16 +77,27 @@ jobs:
           echo "VENDING_ADDRESS=$VENDING_ADDRESS" >> $GITHUB_OUTPUT
           echo "TOKEN_ADDRESS=$TOKEN_ADDRESS" >> $GITHUB_OUTPUT
 
+      - name: Wait for blockchain indexing
+        if: ${{ github.event.inputs.verify == 'true' || github.event.inputs.verify == null }}
+        run: |
+          echo "Waiting 30 seconds for blockchain indexing..."
+          sleep 30
+
       - name: Verify contracts
         if: ${{ github.event.inputs.verify == 'true' || github.event.inputs.verify == null }}
         continue-on-error: true
         run: |
           echo "Verifying VendingMachine at ${{ steps.deploy.outputs.VENDING_ADDRESS }}"
           
+          # Read constructor args from broadcast file
+          CONSTRUCTOR_ARGS=$(cat broadcast/DeployVendingMachine.s.sol/$CHAIN_ID/run-latest.json | jq -r '.transactions[] | select(.contractName == "VendingMachine") | .arguments')
+          
           forge verify-contract \
             --chain-id $CHAIN_ID \
             --watch \
             --etherscan-api-key $ETHERSCAN_API \
+            --constructor-args $CONSTRUCTOR_ARGS \
+            --compiler-version v0.8.20+commit.a1b79de6 \
             ${{ steps.deploy.outputs.VENDING_ADDRESS }} \
             src/contracts/VendingMachine.sol:VendingMachine
 
