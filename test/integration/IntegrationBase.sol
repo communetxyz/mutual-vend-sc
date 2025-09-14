@@ -16,7 +16,8 @@ contract IntegrationBase is Test {
   IGreeter internal _greeter;
 
   function setUp() public {
-    vm.createSelectFork(vm.rpcUrl('mainnet'), _FORK_BLOCK);
+    string memory rpcUrl = vm.envOr('MAINNET_RPC', string('https://eth.llamarpc.com'));
+    vm.createSelectFork(rpcUrl, _FORK_BLOCK);
     vm.prank(_owner);
     _greeter = new Greeter(_initialGreeting, _dai);
   }
