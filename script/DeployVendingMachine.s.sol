@@ -94,10 +94,28 @@ contract DeployVendingMachine is Script {
     address[] memory tokens = vm.parseJsonAddressArray(json, '.acceptedTokens');
     config.acceptedTokens = tokens;
 
-    // Parse products
-    bytes memory productsRaw = vm.parseJson(json, '.products');
-    ProductConfig[] memory products = abi.decode(productsRaw, (ProductConfig[]));
-    config.products = products;
+    // Parse products array - need to parse each field individually
+    // First, determine the number of products
+    uint256 numProducts = 0;
+    while (true) {
+      try vm.parseJsonString(json, string.concat('.products[', vm.toString(numProducts), '].name')) returns (
+        string memory
+      ) {
+        numProducts++;
+      } catch {
+        break;
+      }
+    }
+
+    // Parse each product individually
+    config.products = new ProductConfig[](numProducts);
+    for (uint256 i = 0; i < numProducts; i++) {
+      string memory basePath = string.concat('.products[', vm.toString(i), ']');
+      config.products[i].name = vm.parseJsonString(json, string.concat(basePath, '.name'));
+      config.products[i].ipfsHash = vm.parseJsonString(json, string.concat(basePath, '.ipfsHash'));
+      config.products[i].stock = vm.parseJsonUint(json, string.concat(basePath, '.stock'));
+      config.products[i].price = vm.parseJsonUint(json, string.concat(basePath, '.price'));
+    }
 
     validateConfig(config);
 
