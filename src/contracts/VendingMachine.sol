@@ -27,7 +27,10 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
         uint256 _maxStockPerTrack,
         string memory _voteTokenName,
         string memory _voteTokenSymbol,
-        address[] memory _initialAcceptedTokens
+        address[] memory _initialAcceptedTokens,
+        Product[] memory _initialProducts,
+        uint256[] memory _initialStocks,
+        uint256[] memory _initialPrices
     ) {
         if (_numTracks == 0) revert InvalidTrackCount();
         if (_maxStockPerTrack == 0) revert InvalidStock();
@@ -39,9 +42,23 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
         voteToken = new VoteToken(_voteTokenName, _voteTokenSymbol);
         voteToken.grantRole(voteToken.MINTER_ROLE(), address(this));
         
-        // Initialize tracks
+        // Initialize tracks with products if provided
         for (uint8 i = 0; i < _numTracks; i++) {
             tracks[i].trackId = i;
+            
+            // Initialize with products if provided
+            if (i < _initialProducts.length) {
+                tracks[i].product = _initialProducts[i];
+                
+                if (i < _initialStocks.length) {
+                    if (_initialStocks[i] > _maxStockPerTrack) revert InvalidStock();
+                    tracks[i].stock = _initialStocks[i];
+                }
+                
+                if (i < _initialPrices.length) {
+                    tracks[i].price = _initialPrices[i];
+                }
+            }
         }
         
         // Set initial accepted tokens
@@ -64,11 +81,15 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
         _validateTrackId(trackId);
         if (stock > MAX_STOCK_PER_TRACK) revert InvalidStock();
         
-        // Allow empty product to clear track, otherwise overwrite existing product
-        tracks[trackId].product = product;
+        // Only overwrite product if not empty
+        if (bytes(product.name).length > 0 || bytes(product.imageURI).length > 0) {
+            tracks[trackId].product = product;
+        }
         tracks[trackId].stock = stock;
         
-        emit TrackLoaded(trackId, product.name, product.imageURI, stock);
+        // Emit event with actual track product
+        Product memory actualProduct = tracks[trackId].product;
+        emit TrackLoaded(trackId, actualProduct.name, actualProduct.imageURI, stock);
     }
 
     function loadMultipleTracks(
@@ -85,10 +106,15 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
             _validateTrackId(trackIds[i]);
             if (stocks[i] > MAX_STOCK_PER_TRACK) revert InvalidStock();
             
-            tracks[trackIds[i]].product = products[i];
+            // Only overwrite product if not empty
+            if (bytes(products[i].name).length > 0 || bytes(products[i].imageURI).length > 0) {
+                tracks[trackIds[i]].product = products[i];
+            }
             tracks[trackIds[i]].stock = stocks[i];
             
-            emit TrackLoaded(trackIds[i], products[i].name, products[i].imageURI, stocks[i]);
+            // Emit event with actual track product
+            Product memory actualProduct = tracks[trackIds[i]].product;
+            emit TrackLoaded(trackIds[i], actualProduct.name, actualProduct.imageURI, stocks[i]);
         }
     }
 
@@ -151,13 +177,11 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
         address recipient
     ) external nonReentrant returns (uint256) {
         if (!acceptedTokens[token]) revert TokenNotAccepted();
-        // Allow recipient to be 0 address for burning
         
         Track storage track = tracks[trackId];
         if (track.stock == 0) revert InsufficientStock();
         if (track.price == 0) revert PriceNotSet();
         
-        // Price is already in 1e18 format
         uint256 price = track.price;
         
         IERC20(token).safeTransferFrom(msg.sender, address(this), price);
@@ -175,28 +199,31 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     }
 
     function withdrawRevenue(
-        address token,
+        address[] calldata tokens,
         address to,
-        uint256 amount
+        uint256[] calldata amounts
     ) external onlyRole(TREASURY_ROLE) {
-        if (token == address(0) || to == address(0)) revert ZeroAddress();
-        if (amount == 0) revert InvalidAmount();
+        if (to == address(0)) revert ZeroAddress();
+        if (tokens.length != amounts.length) revert ArrayLengthMismatch();
         
-        uint256 balance = IERC20(token).balanceOf(address(this));
-        if (balance < amount) revert InsufficientBalance();
-        
-        IERC20(token).safeTransfer(to, amount);
-        
-        emit RevenueWithdrawn(token, to, amount);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] == address(0)) revert ZeroAddress();
+            if (amounts[i] == 0) revert InvalidAmount();
+            
+            uint256 balance = IERC20(tokens[i]).balanceOf(address(this));
+            if (balance < amounts[i]) revert InsufficientBalance();
+            
+            IERC20(tokens[i]).safeTransfer(to, amounts[i]);
+            
+            emit RevenueWithdrawn(tokens[i], to, amounts[i]);
+        }
     }
 
     function getTrack(uint8 trackId) external view returns (Track memory) {
-        // No validation needed per comment
         return tracks[trackId];
     }
 
     function getTrackInventory(uint8 trackId) external view returns (uint256) {
-        // No validation needed per comment
         return tracks[trackId].stock;
     }
 

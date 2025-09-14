@@ -45,12 +45,19 @@ contract VendingMachineTest is Test {
         acceptedTokens[2] = address(dai);
         
         // Deploy vending machine with integrated vote token
+        IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
+        uint256[] memory initialStocks = new uint256[](0);
+        uint256[] memory initialPrices = new uint256[](0);
+        
         vendingMachine = new VendingMachine(
             NUM_TRACKS,
             MAX_STOCK,
             "Vending Machine Token",
             "VMT",
-            acceptedTokens
+            acceptedTokens,
+            initialProducts,
+            initialStocks,
+            initialPrices
         );
         
         voteToken = vendingMachine.voteToken();
@@ -291,8 +298,13 @@ contract VendingMachineTest is Test {
         
         uint256 balanceBefore = usdc.balanceOf(treasury);
         
+        address[] memory withdrawTokens = new address[](1);
+        withdrawTokens[0] = address(usdc);
+        uint256[] memory withdrawAmounts = new uint256[](1);
+        withdrawAmounts[0] = price;
+        
         vm.prank(treasury);
-        vendingMachine.withdrawRevenue(address(usdc), treasury, price);
+        vendingMachine.withdrawRevenue(withdrawTokens, treasury, withdrawAmounts);
         
         assertEq(usdc.balanceOf(treasury), balanceBefore + price);
         assertEq(usdc.balanceOf(address(vendingMachine)), 0);

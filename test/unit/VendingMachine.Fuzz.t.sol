@@ -46,12 +46,19 @@ contract VendingMachineFuzzTest is Test {
         acceptedTokens[2] = address(dai);
         
         // Deploy vending machine
+        IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
+        uint256[] memory initialStocks = new uint256[](0);
+        uint256[] memory initialPrices = new uint256[](0);
+        
         vendingMachine = new VendingMachine(
             NUM_TRACKS,
             MAX_STOCK,
             "VendingVotes",
             "VVOTE",
-            acceptedTokens
+            acceptedTokens,
+            initialProducts,
+            initialStocks,
+            initialPrices
         );
         
         voteToken = vendingMachine.voteToken();
@@ -78,12 +85,19 @@ contract VendingMachineFuzzTest is Test {
         address[] memory tokens = new address[](1);
         tokens[0] = address(usdc);
         
+        IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
+        uint256[] memory initialStocks = new uint256[](0);
+        uint256[] memory initialPrices = new uint256[](0);
+        
         VendingMachine vm = new VendingMachine(
             _numTracks,
             _maxStock,
             _tokenName,
             _tokenSymbol,
-            tokens
+            tokens,
+            initialProducts,
+            initialStocks,
+            initialPrices
         );
         
         assertEq(vm.NUM_TRACKS(), _numTracks);
@@ -310,8 +324,13 @@ contract VendingMachineFuzzTest is Test {
         
         uint256 initialBalance = testToken.balanceOf(to);
         
+        address[] memory withdrawTokens = new address[](1);
+        withdrawTokens[0] = address(testToken);
+        uint256[] memory withdrawAmounts = new uint256[](1);
+        withdrawAmounts[0] = amount;
+        
         vm.prank(treasury);
-        vendingMachine.withdrawRevenue(address(testToken), to, amount);
+        vendingMachine.withdrawRevenue(withdrawTokens, to, withdrawAmounts);
         
         assertEq(testToken.balanceOf(to), initialBalance + amount);
         assertEq(testToken.balanceOf(address(vendingMachine)), contractBalance - amount);
