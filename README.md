@@ -56,14 +56,6 @@ forge script script/DeployVendingMachine.s.sol:DeployVendingMachine \
   --broadcast \
   --verify \
   -vvv
-
-# 3. Deploy to Sepolia testnet
-forge script script/DeployVendingMachine.s.sol:DeployVendingMachine \
-  --rpc-url $SEPOLIA_RPC \
-  --private-key $PRIVATE_KEY \
-  --broadcast \
-  --verify \
-  -vvv
 ```
 
 ### GitHub Actions Deployment
@@ -73,12 +65,11 @@ The project includes automated deployment workflows:
 1. **Configure Repository Secrets**:
    - `DEPLOYER_PRIVATE_KEY` - Private key for deployments
    - `HOLESKY_RPC_URL` - Holesky RPC endpoint
-   - `SEPOLIA_RPC_URL` - Sepolia RPC endpoint
    - `ETHERSCAN_API_KEY` - For contract verification
 
 2. **Trigger Deployment**:
-   - Manual: Go to Actions tab → "Deploy to Testnet" → Run workflow
-   - Automatic: Push to `main` (Holesky) or `develop` (Sepolia)
+   - Manual: Go to Actions tab → "Deploy to Holesky" → Run workflow
+   - Automatic: On pull requests and pushes to `main` branch
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
 
