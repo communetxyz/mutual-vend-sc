@@ -154,12 +154,20 @@ jobs:
           
           echo "$OUTPUT"
           
-          # Extract transaction hash from output if available
-          PURCHASE_TX=$(echo "$OUTPUT" | grep -o "hash: 0x[a-fA-F0-9]*" | head -1 | awk '{print $2}')
-          
-          if [ -n "$PURCHASE_TX" ]; then
+          # Extract the actual purchase transaction hash from broadcast file
+          # The second transaction in the array is the vendFromTrack call
+          BROADCAST_FILE="broadcast/PurchaseFromGnosis.s.sol/$CHAIN_ID/run-latest.json"
+          if [ -f "$BROADCAST_FILE" ]; then
+            # Get the hash of the vendFromTrack transaction (usually the second transaction)
+            PURCHASE_TX=$(cat $BROADCAST_FILE | jq -r '.transactions[] | select(.transaction.to == "'${{ steps.deploy.outputs.VENDING_ADDRESS }}'" and .transactionType == "CALL") | .hash' | head -1)
+            
+            if [ -z "$PURCHASE_TX" ]; then
+              # Fallback: get the last transaction hash
+              PURCHASE_TX=$(cat $BROADCAST_FILE | jq -r '.transactions[-1].hash')
+            fi
+            
             echo "PURCHASE_TX=$PURCHASE_TX" >> $GITHUB_OUTPUT
-            echo "Purchase transaction: $PURCHASE_TX"
+            echo "Purchase transaction hash: $PURCHASE_TX"
           else
             echo "Purchase simulation successful (no broadcast in test mode)"
           fi
