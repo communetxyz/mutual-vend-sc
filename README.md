@@ -40,17 +40,40 @@ yarn build
 yarn test
 ```
 
-## Usage
+## Deployment
 
-### Deploy Contracts
+### Quick Start
 
 ```bash
-# Deploy to local network
-forge script script/Deploy.s.sol --rpc-url localhost --broadcast
+# 1. Configure environment variables
+cp .env.example .env
+# Edit .env with your RPC URLs and private keys
 
-# Deploy to Sepolia testnet
-yarn deploy:sepolia
+# 2. Deploy to Holesky testnet
+forge script script/DeployVendingMachine.s.sol:DeployVendingMachine \
+  --rpc-url $HOLESKY_RPC \
+  --private-key $PRIVATE_KEY \
+  --broadcast \
+  --verify \
+  -vvv
 ```
+
+### GitHub Actions Deployment
+
+The project includes automated deployment workflows:
+
+1. **Configure Repository Secrets**:
+   - `DEPLOYER_PRIVATE_KEY` - Private key for deployments
+   - `HOLESKY_RPC_URL` - Holesky RPC endpoint
+   - `ETHERSCAN_API_KEY` - For contract verification
+
+2. **Trigger Deployment**:
+   - Manual: Go to Actions tab → "Deploy to Holesky" → Run workflow
+   - Automatic: On pull requests and pushes to `main` branch
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
+
+## Usage
 
 ### Key Functions
 
