@@ -1,0 +1,21 @@
+{
+  "numTracks": 3,
+  "maxStockPerTrack": 10,
+  "tokenName": "Test Vending Token",
+  "tokenSymbol": "TVT",
+  "acceptedTokens": [],
+  "products": [
+    {
+      "name": "Test Product 1",
+      "ipfsHash": "ipfs://QmTestProduct1",
+      "stock": 5,
+      "price": "1000000000000000000"
+    },
+    {
+      "name": "Test Product 2",
+      "ipfsHash": "ipfs://QmTestProduct2",
+      "stock": 5,
+      "price": "1500000000000000000"
+    }
+  ]
+}
