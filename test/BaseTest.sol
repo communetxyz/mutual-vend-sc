@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test} from 'forge-std/Test.sol';
 import {VendingMachine} from '../src/contracts/VendingMachine.sol';
 import {VoteToken} from '../src/contracts/VoteToken.sol';
 import {IVendingMachine} from '../src/interfaces/IVendingMachine.sol';
 import {ERC20} from '@openzeppelin/contracts/token/ERC20/ERC20.sol';
+import {Test} from 'forge-std/Test.sol';
 
 contract MockStablecoin is ERC20 {
   constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
@@ -80,16 +80,16 @@ abstract contract BaseTest is Test {
     config.maxStockPerTrack = DEFAULT_MAX_STOCK;
     config.tokenName = 'Vending Machine Token';
     config.tokenSymbol = 'VMT';
-    
+
     // Setup accepted tokens
     config.acceptedTokens = new address[](3);
     config.acceptedTokens[0] = address(usdc);
     config.acceptedTokens[1] = address(usdt);
     config.acceptedTokens[2] = address(dai);
-    
+
     // No initial products by default
     config.products = new ProductConfig[](0);
-    
+
     return config;
   }
 

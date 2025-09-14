@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {BaseTest, MockStablecoin} from '../BaseTest.sol';
 import {VendingMachine} from '../../src/contracts/VendingMachine.sol';
 import {VoteToken} from '../../src/contracts/VoteToken.sol';
 import {IVendingMachine} from '../../src/interfaces/IVendingMachine.sol';
-import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import {BaseTest, MockStablecoin} from '../BaseTest.sol';
+
 import {IAccessControl} from '@openzeppelin/contracts/access/IAccessControl.sol';
+import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 
 contract VendingMachineTest is BaseTest {
   // Events
@@ -20,10 +21,10 @@ contract VendingMachineTest is BaseTest {
   // Constructor tests
   function test_ConstructorWhenNumTracksIsZero() external {
     vm.startPrank(owner);
-    
+
     DeploymentConfig memory config = getDeploymentConfig();
     config.numTracks = 0;
-    
+
     // Prepare empty deployment parameters
     IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
     uint256[] memory initialStocks = new uint256[](0);
@@ -32,25 +33,25 @@ contract VendingMachineTest is BaseTest {
     // it reverts with InvalidTrackCount
     vm.expectRevert(IVendingMachine.InvalidTrackCount.selector);
     new VendingMachine(
-      config.numTracks, 
-      config.maxStockPerTrack, 
-      config.tokenName, 
-      config.tokenSymbol, 
-      config.acceptedTokens, 
-      initialProducts, 
-      initialStocks, 
+      config.numTracks,
+      config.maxStockPerTrack,
+      config.tokenName,
+      config.tokenSymbol,
+      config.acceptedTokens,
+      initialProducts,
+      initialStocks,
       initialPrices
     );
-    
+
     vm.stopPrank();
   }
 
   function test_ConstructorWhenMaxStockPerTrackIsZero() external {
     vm.startPrank(owner);
-    
+
     DeploymentConfig memory config = getDeploymentConfig();
     config.maxStockPerTrack = 0;
-    
+
     // Prepare empty deployment parameters
     IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
     uint256[] memory initialStocks = new uint256[](0);
@@ -68,22 +69,20 @@ contract VendingMachineTest is BaseTest {
       initialStocks,
       initialPrices
     );
-    
+
     vm.stopPrank();
   }
 
   function test_ConstructorWhenInitialProductsArrayLengthExceedsNumTracks() external {
     vm.startPrank(owner);
-    
+
     DeploymentConfig memory config = getDeploymentConfig();
-    
+
     // Create products exceeding num tracks
     IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](config.numTracks + 1);
     for (uint8 i = 0; i <= config.numTracks; i++) {
-      initialProducts[i] = IVendingMachine.Product({
-        name: string(abi.encodePacked('Product', i)), 
-        imageURI: 'ipfs://product'
-      });
+      initialProducts[i] =
+        IVendingMachine.Product({name: string(abi.encodePacked('Product', i)), imageURI: 'ipfs://product'});
     }
     uint256[] memory initialStocks = new uint256[](config.numTracks + 1);
     for (uint8 i = 0; i <= config.numTracks; i++) {
@@ -105,7 +104,7 @@ contract VendingMachineTest is BaseTest {
       initialStocks,
       initialPrices
     );
-    
+
     // Only NUM_TRACKS tracks should be initialized
     for (uint8 i = 0; i < config.numTracks; i++) {
       IVendingMachine.Track memory track = newVendingMachine.getTrack(i);
@@ -113,15 +112,15 @@ contract VendingMachineTest is BaseTest {
       assertEq(track.stock, 10);
       assertEq(track.price, 1e18);
     }
-    
+
     vm.stopPrank();
   }
 
   function test_ConstructorWhenArraysHaveMismatchedLengths() external {
     vm.startPrank(owner);
-    
+
     DeploymentConfig memory config = getDeploymentConfig();
-    
+
     IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](2);
     initialProducts[0] = IVendingMachine.Product({name: 'Product1', imageURI: 'ipfs://1'});
     initialProducts[1] = IVendingMachine.Product({name: 'Product2', imageURI: 'ipfs://2'});
@@ -142,19 +141,19 @@ contract VendingMachineTest is BaseTest {
       initialStocks,
       initialPrices
     );
-    
+
     // Track 0 should have product, stock, and price
     IVendingMachine.Track memory track0 = newVendingMachine.getTrack(0);
     assertEq(track0.product.name, 'Product1');
     assertEq(track0.stock, 10);
     assertEq(track0.price, 1e18);
-    
+
     // Track 1 should have product and price but no stock (default 0)
     IVendingMachine.Track memory track1 = newVendingMachine.getTrack(1);
     assertEq(track1.product.name, 'Product2');
     assertEq(track1.stock, 0);
     assertEq(track1.price, 2e18);
-    
+
     vm.stopPrank();
   }
 
@@ -168,21 +167,11 @@ contract VendingMachineTest is BaseTest {
     config.acceptedTokens = new address[](2);
     config.acceptedTokens[0] = address(usdc);
     config.acceptedTokens[1] = address(usdt);
-    
+
     // Add initial products
     config.products = new ProductConfig[](2);
-    config.products[0] = ProductConfig({
-      name: 'Product1',
-      ipfsHash: 'ipfs://1',
-      stock: 10,
-      price: 1e18
-    });
-    config.products[1] = ProductConfig({
-      name: 'Product2',
-      ipfsHash: 'ipfs://2',
-      stock: 20,
-      price: 2e18
-    });
+    config.products[0] = ProductConfig({name: 'Product1', ipfsHash: 'ipfs://1', stock: 10, price: 1e18});
+    config.products[1] = ProductConfig({name: 'Product2', ipfsHash: 'ipfs://2', stock: 20, price: 2e18});
 
     // Prepare deployment parameters
     IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](config.products.length);
@@ -211,26 +200,26 @@ contract VendingMachineTest is BaseTest {
 
     // it sets NUM_TRACKS correctly
     assertEq(newVendingMachine.NUM_TRACKS(), config.numTracks);
-    
+
     // it sets MAX_STOCK_PER_TRACK correctly
     assertEq(newVendingMachine.MAX_STOCK_PER_TRACK(), config.maxStockPerTrack);
-    
+
     // it deploys and sets the vote token
     assertNotEq(address(newVoteToken), address(0));
-    
+
     // it grants MINTER_ROLE to the contract
     assertTrue(newVoteToken.hasRole(newVoteToken.MINTER_ROLE(), address(newVendingMachine)));
-    
+
     // it initializes tracks with provided products
     IVendingMachine.Track memory track0 = newVendingMachine.getTrack(0);
     assertEq(track0.product.name, 'Product1');
     assertEq(track0.stock, 10);
     assertEq(track0.price, 1e18);
-    
+
     // it sets initial accepted tokens
     assertTrue(newVendingMachine.isTokenAccepted(address(usdc)));
     assertTrue(newVendingMachine.isTokenAccepted(address(usdt)));
-    
+
     // it grants DEFAULT_ADMIN_ROLE to deployer
     assertTrue(newVendingMachine.hasRole(newVendingMachine.DEFAULT_ADMIN_ROLE(), owner));
   }
@@ -241,7 +230,9 @@ contract VendingMachineTest is BaseTest {
 
     // it reverts with AccessControlUnauthorizedAccount
     vm.expectRevert(
-      abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE())
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE()
+      )
     );
     vm.prank(nonOperator);
     vendingMachine.loadTrack(0, product, 10);
@@ -249,7 +240,7 @@ contract VendingMachineTest is BaseTest {
 
   function test_LoadTrackWhenTrackIdIsInvalid() external {
     vm.prank(operator);
-    
+
     IVendingMachine.Product memory product = IVendingMachine.Product({name: 'Soda', imageURI: 'ipfs://soda'});
 
     // it reverts with InvalidTrackId
@@ -259,7 +250,7 @@ contract VendingMachineTest is BaseTest {
 
   function test_LoadTrackWhenStockExceedsMAX_STOCK_PER_TRACK() external {
     vm.prank(operator);
-    
+
     IVendingMachine.Product memory product = IVendingMachine.Product({name: 'Soda', imageURI: 'ipfs://soda'});
 
     // it reverts with InvalidStock
@@ -275,22 +266,22 @@ contract VendingMachineTest is BaseTest {
 
   function test_LoadTrackWhenParametersAreValid() external whenCalledByOperator {
     IVendingMachine.Product memory product = IVendingMachine.Product({name: 'Soda', imageURI: 'ipfs://soda'});
-    
+
     // it emits TrackLoaded event
     vm.expectEmit(true, false, false, true);
     emit TrackLoaded(0, 'Soda', 'ipfs://soda', 10);
-    
+
     vendingMachine.loadTrack(0, product, 10);
-    
+
     IVendingMachine.Track memory track = vendingMachine.getTrack(0);
-    
+
     // it sets the product details
     assertEq(track.product.name, 'Soda');
     assertEq(track.product.imageURI, 'ipfs://soda');
-    
+
     // it sets the stock
     assertEq(track.stock, 10);
-    
+
     // it resets the price to zero
     assertEq(track.price, 0);
   }
@@ -306,7 +297,9 @@ contract VendingMachineTest is BaseTest {
 
     // it reverts with AccessControlUnauthorizedAccount
     vm.expectRevert(
-      abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE())
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE()
+      )
     );
     vm.prank(nonOperator);
     vendingMachine.loadMultipleTracks(trackIds, products, stocks);
@@ -389,7 +382,9 @@ contract VendingMachineTest is BaseTest {
   function test_RestockTrackWhenCallerDoesNotHaveOPERATOR_ROLE() external {
     // it reverts with AccessControlUnauthorizedAccount
     vm.expectRevert(
-      abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE())
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE()
+      )
     );
     vm.prank(nonOperator);
     vendingMachine.restockTrack(0, 10);
@@ -428,7 +423,9 @@ contract VendingMachineTest is BaseTest {
   function test_SetTrackPriceWhenCallerDoesNotHaveOPERATOR_ROLE() external {
     // it reverts with AccessControlUnauthorizedAccount
     vm.expectRevert(
-      abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE())
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE()
+      )
     );
     vm.prank(nonOperator);
     vendingMachine.setTrackPrice(0, 3e18);
@@ -458,7 +455,9 @@ contract VendingMachineTest is BaseTest {
 
     // it reverts with AccessControlUnauthorizedAccount
     vm.expectRevert(
-      abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE())
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector, nonOperator, vendingMachine.OPERATOR_ROLE()
+      )
     );
     vm.prank(nonOperator);
     vendingMachine.configurePaymentTokens(tokens);
@@ -498,7 +497,7 @@ contract VendingMachineTest is BaseTest {
     IVendingMachine.Product memory product = IVendingMachine.Product({name: 'Soda', imageURI: 'ipfs://soda'});
     vendingMachine.loadTrack(0, product, 40);
     vendingMachine.setTrackPrice(0, 2e18);
-    
+
     address[] memory emptyTokens = new address[](0);
     vendingMachine.configurePaymentTokens(emptyTokens);
     vm.stopPrank();
@@ -639,7 +638,9 @@ contract VendingMachineTest is BaseTest {
 
     // it reverts with AccessControlUnauthorizedAccount
     vm.expectRevert(
-      abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, nonTreasury, vendingMachine.TREASURY_ROLE())
+      abi.encodeWithSelector(
+        IAccessControl.AccessControlUnauthorizedAccount.selector, nonTreasury, vendingMachine.TREASURY_ROLE()
+      )
     );
     vm.prank(nonTreasury);
     vendingMachine.withdrawRevenue(tokens, treasury, amounts);
@@ -723,8 +724,8 @@ contract VendingMachineTest is BaseTest {
     // it returns empty track for invalid ID (no validation in view function)
     IVendingMachine.Track memory track = vendingMachine.getTrack(DEFAULT_NUM_TRACKS);
     assertEq(track.trackId, 0);
-    assertEq(track.product.name, "");
-    assertEq(track.product.imageURI, "");
+    assertEq(track.product.name, '');
+    assertEq(track.product.imageURI, '');
     assertEq(track.stock, 0);
     assertEq(track.price, 0);
   }
