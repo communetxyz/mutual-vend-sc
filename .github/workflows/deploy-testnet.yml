@@ -1,0 +1,152 @@
+name: Deploy to Testnet
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      network:
+        description: 'Network to deploy to'
+        required: true
+        default: 'holesky'
+        type: choice
+        options:
+          - holesky
+          - sepolia
+      verify:
+        description: 'Verify contracts on Etherscan'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  FOUNDRY_PROFILE: default
+
+jobs:
+  deploy:
+    name: Deploy VendingMachine to ${{ github.event.inputs.network || 'holesky' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.network || 'holesky' }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build contracts
+        run: forge build
+
+      - name: Set network-specific environment
+        id: network-env
+        run: |
+          NETWORK="${{ github.event.inputs.network || 'holesky' }}"
+          
+          if [ "$NETWORK" = "holesky" ]; then
+            echo "RPC_URL=${{ secrets.HOLESKY_RPC_URL }}" >> $GITHUB_ENV
+            echo "ETHERSCAN_API=${{ secrets.ETHERSCAN_API_KEY }}" >> $GITHUB_ENV
+            echo "CHAIN_ID=17000" >> $GITHUB_ENV
+            echo "EXPLORER_URL=https://holesky.etherscan.io" >> $GITHUB_OUTPUT
+          elif [ "$NETWORK" = "sepolia" ]; then
+            echo "RPC_URL=${{ secrets.SEPOLIA_RPC_URL }}" >> $GITHUB_ENV
+            echo "ETHERSCAN_API=${{ secrets.ETHERSCAN_API_KEY }}" >> $GITHUB_ENV
+            echo "CHAIN_ID=11155111" >> $GITHUB_ENV
+            echo "EXPLORER_URL=https://sepolia.etherscan.io" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "PRIVATE_KEY=${{ secrets.DEPLOYER_PRIVATE_KEY }}" >> $GITHUB_ENV
+
+      - name: Deploy VendingMachine
+        id: deploy
+        run: |
+          OUTPUT=$(forge script script/DeployVendingMachine.s.sol:DeployVendingMachine \
+            --rpc-url $RPC_URL \
+            --broadcast \
+            --slow \
+            -vvv)
+          
+          echo "$OUTPUT"
+          
+          # Extract deployed addresses from output
+          VENDING_ADDRESS=$(echo "$OUTPUT" | grep -o "VendingMachine deployed at: 0x[a-fA-F0-9]*" | awk '{print $4}')
+          TOKEN_ADDRESS=$(echo "$OUTPUT" | grep -o "VoteToken deployed at: 0x[a-fA-F0-9]*" | awk '{print $4}')
+          
+          echo "VENDING_ADDRESS=$VENDING_ADDRESS" >> $GITHUB_OUTPUT
+          echo "TOKEN_ADDRESS=$TOKEN_ADDRESS" >> $GITHUB_OUTPUT
+
+      - name: Verify contracts
+        if: ${{ github.event.inputs.verify == 'true' || github.event.inputs.verify == null }}
+        continue-on-error: true
+        run: |
+          echo "Verifying VendingMachine at ${{ steps.deploy.outputs.VENDING_ADDRESS }}"
+          
+          forge verify-contract \
+            --chain-id $CHAIN_ID \
+            --watch \
+            --etherscan-api-key $ETHERSCAN_API \
+            ${{ steps.deploy.outputs.VENDING_ADDRESS }} \
+            src/contracts/VendingMachine.sol:VendingMachine
+
+      - name: Create deployment summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Network: ${{ github.event.inputs.network || 'holesky' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract | Address | Explorer |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| VendingMachine | \`${{ steps.deploy.outputs.VENDING_ADDRESS }}\` | [View](${{ steps.network-env.outputs.EXPLORER_URL }}/address/${{ steps.deploy.outputs.VENDING_ADDRESS }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| VoteToken | \`${{ steps.deploy.outputs.TOKEN_ADDRESS }}\` | [View](${{ steps.network-env.outputs.EXPLORER_URL }}/address/${{ steps.deploy.outputs.TOKEN_ADDRESS }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
+          echo "- Deployer: \`${{ secrets.DEPLOYER_ADDRESS }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Save deployment artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-${{ github.event.inputs.network || 'holesky' }}-${{ github.run_number }}
+          path: |
+            broadcast/
+            out/
+
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const network = '${{ github.event.inputs.network || 'holesky' }}';
+            const vendingAddress = '${{ steps.deploy.outputs.VENDING_ADDRESS }}';
+            const tokenAddress = '${{ steps.deploy.outputs.TOKEN_ADDRESS }}';
+            const explorerUrl = '${{ steps.network-env.outputs.EXPLORER_URL }}';
+            
+            const comment = `## 🚀 Deployed to ${network}
+            
+            **VendingMachine**: [${vendingAddress}](${explorerUrl}/address/${vendingAddress})
+            **VoteToken**: [${tokenAddress}](${explorerUrl}/address/${tokenAddress})
+            
+            Deployed from commit: ${context.sha}`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
