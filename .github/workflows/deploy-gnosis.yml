@@ -88,22 +88,35 @@ jobs:
 
       - name: Verify contracts
         if: ${{ github.event.inputs.verify == 'true' || github.event.inputs.verify == null }}
-        continue-on-error: true
         run: |
           echo "Verifying VendingMachine at ${{ steps.deploy.outputs.VENDING_ADDRESS }}"
           
-          # Read constructor args from broadcast file
-          CONSTRUCTOR_ARGS=$(cat broadcast/DeployVendingMachine.s.sol/$CHAIN_ID/run-latest.json | jq -r '.transactions[] | select(.contractName == "VendingMachine") | .arguments')
+          # Extract constructor arguments from broadcast file
+          BROADCAST_FILE="broadcast/DeployVendingMachine.s.sol/$CHAIN_ID/run-latest.json"
+          echo "Reading constructor arguments from: $BROADCAST_FILE"
           
+          # Get the transaction that deployed VendingMachine
+          DEPLOY_TX=$(cat $BROADCAST_FILE | jq -r '.transactions[] | select(.contractName == "VendingMachine")')
+          
+          # Extract constructor arguments (removing the 0x prefix and bytecode)
+          # The arguments field contains the raw constructor arguments
+          CONSTRUCTOR_ARGS=$(echo "$DEPLOY_TX" | jq -r '.arguments' | sed 's/\[//g' | sed 's/\]//g' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g')
+          
+          echo "Constructor arguments: $CONSTRUCTOR_ARGS"
+          
+          # Build the constructor arguments string for forge verify-contract
+          # The VendingMachine constructor takes multiple parameters, we need to encode them properly
           forge verify-contract \
+            ${{ steps.deploy.outputs.VENDING_ADDRESS }} \
+            src/contracts/VendingMachine.sol:VendingMachine \
             --chain-id $CHAIN_ID \
-            --watch \
             --etherscan-api-key $GNOSISSCAN_API \
-            --constructor-args $CONSTRUCTOR_ARGS \
             --compiler-version v0.8.20+commit.a1b79de6 \
             --verifier-url https://api.gnosisscan.io/api \
-            ${{ steps.deploy.outputs.VENDING_ADDRESS }} \
-            src/contracts/VendingMachine.sol:VendingMachine
+            --watch || {
+              echo "::error::Contract verification failed"
+              exit 1
+            }
 
       - name: Create deployment summary
         run: |
