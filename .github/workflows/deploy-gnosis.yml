@@ -164,6 +164,42 @@ jobs:
             echo "Purchase simulation successful (no broadcast in test mode)"
           fi
 
+      - name: Create deployment artifact JSON
+        id: create-artifact
+        run: |
+          # Create deployment artifact JSON
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          cat > deployment-gnosis.json << EOF
+          {
+            "network": "gnosis",
+            "chainId": 100,
+            "contracts": {
+              "vendingMachine": "${{ steps.deploy.outputs.VENDING_ADDRESS }}",
+              "voteToken": "${{ steps.deploy.outputs.TOKEN_ADDRESS }}"
+            },
+            "transactions": {
+              "deployment": "${{ steps.deploy.outputs.DEPLOY_TX_HASH }}",
+              "testPurchase": "${{ steps.test-purchase.outputs.PURCHASE_TX }}"
+            },
+            "metadata": {
+              "timestamp": "$TIMESTAMP",
+              "commitHash": "${{ github.sha }}",
+              "deployer": "${{ secrets.MAINNET_DEPLOYER_ADDRESS }}",
+              "rpcUrl": "https://rpc.gnosischain.com",
+              "explorerUrl": "https://gnosisscan.io",
+              "acceptedTokens": ["0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3"]
+            },
+            "version": "${{ github.event.release.tag_name || github.run_number }}",
+            "abi": {
+              "vendingMachine": "https://github.com/communetxyz/mutual-vend-sc/blob/${{ github.sha }}/src/interfaces/IVendingMachine.sol"
+            }
+          }
+          EOF
+          
+          echo "Deployment artifact created: deployment-gnosis.json"
+          cat deployment-gnosis.json
+
       - name: Create deployment summary
         run: |
           echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
@@ -200,6 +236,7 @@ jobs:
           path: |
             broadcast/
             out/
+            deployment-gnosis.json
 
       - name: Comment on PR (if applicable)
         if: github.event_name == 'pull_request'
@@ -239,6 +276,17 @@ jobs:
               body: comment
             });
 
+      - name: Upload deployment artifact to release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./deployment-gnosis.json
+          asset_name: deployment-gnosis.json
+          asset_content_type: application/json
+
       - name: Create release deployment summary
         if: github.event_name == 'release'
         uses: actions/github-script@v7
@@ -247,15 +295,21 @@ jobs:
             const vendingAddress = '${{ steps.deploy.outputs.VENDING_ADDRESS }}';
             const tokenAddress = '${{ steps.deploy.outputs.TOKEN_ADDRESS }}';
             const explorerUrl = '${{ steps.network-env.outputs.EXPLORER_URL }}';
+            const deployTxHash = '${{ steps.deploy.outputs.DEPLOY_TX_HASH }}';
             
             const body = `## 🎉 Gnosis Chain Deployment
             
             **VendingMachine**: [${vendingAddress}](${explorerUrl}/address/${vendingAddress})
             **VoteToken**: [${tokenAddress}](${explorerUrl}/address/${tokenAddress})
             
+            **Deployment Tx**: [${deployTxHash}](${explorerUrl}/tx/${deployTxHash})
+            
             **Network**: Gnosis Chain (Chain ID: 100)
             **Deployed from**: ${context.sha}
-            **Timestamp**: ${new Date().toISOString()}`;
+            **Timestamp**: ${new Date().toISOString()}
+            
+            ### 📦 Deployment Artifact
+            Download \`deployment-gnosis.json\` from the release assets for programmatic access to contract addresses.`;
             
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
