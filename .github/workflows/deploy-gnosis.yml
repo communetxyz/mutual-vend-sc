@@ -144,13 +144,27 @@ jobs:
           # Export the VendingMachine address for the purchase script
           export VENDING_MACHINE_ADDRESS=${{ steps.deploy.outputs.VENDING_ADDRESS }}
           
-          # Run the purchase script
+          # Check if deployer has token balance
+          DEPLOYER_ADDRESS="${{ secrets.MAINNET_DEPLOYER_ADDRESS }}"
+          TOKEN_ADDRESS="0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3"
+          
+          echo "Checking token balance for deployer: $DEPLOYER_ADDRESS"
+          TOKEN_BALANCE=$(cast call $TOKEN_ADDRESS "balanceOf(address)(uint256)" $DEPLOYER_ADDRESS --rpc-url $RPC_URL)
+          echo "Token balance: $TOKEN_BALANCE"
+          
+          # Run the purchase script - it will fail if insufficient balance
           OUTPUT=$(forge script script/PurchaseFromGnosis.s.sol:PurchaseFromGnosis \
             --rpc-url $RPC_URL \
             --broadcast \
             --slow \
             --legacy \
-            -vvv)
+            -vvv) || {
+            echo "::error::Purchase test failed. Ensure deployer has sufficient token balance."
+            echo "::error::Deployer: $DEPLOYER_ADDRESS"
+            echo "::error::Token: $TOKEN_ADDRESS"
+            echo "::error::Balance: $TOKEN_BALANCE"
+            exit 1
+          }
           
           echo "$OUTPUT"
           
@@ -166,10 +180,14 @@ jobs:
               PURCHASE_TX=$(cat $BROADCAST_FILE | jq -r '.transactions[-1].hash')
             fi
             
-            echo "PURCHASE_TX=$PURCHASE_TX" >> $GITHUB_OUTPUT
-            echo "Purchase transaction hash: $PURCHASE_TX"
+            if [ -n "$PURCHASE_TX" ] && [ "$PURCHASE_TX" != "null" ]; then
+              echo "PURCHASE_TX=$PURCHASE_TX" >> $GITHUB_OUTPUT
+              echo "Purchase transaction hash: $PURCHASE_TX"
+            else
+              echo "::warning::No purchase transaction found, but script succeeded"
+            fi
           else
-            echo "Purchase simulation successful (no broadcast in test mode)"
+            echo "::warning::No broadcast file found for purchase test"
           fi
 
       - name: Create deployment artifact JSON

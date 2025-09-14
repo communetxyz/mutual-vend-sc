@@ -63,7 +63,7 @@ contract PurchaseFromGnosis is Script {
     if (selectedTrack.stock == 0) {
       console2.log('Track is out of stock!');
       vm.stopBroadcast();
-      return;
+      revert('Track is out of stock');
     }
 
     if (tokenBalance < selectedTrack.price) {
@@ -71,7 +71,7 @@ contract PurchaseFromGnosis is Script {
       console2.log('Required:', selectedTrack.price);
       console2.log('Available:', tokenBalance);
       vm.stopBroadcast();
-      return;
+      revert('Insufficient token balance for purchase');
     }
 
     // Check current allowance
