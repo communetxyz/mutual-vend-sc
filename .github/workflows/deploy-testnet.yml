@@ -1,4 +1,4 @@
-name: Deploy to Holesky
+name: Deploy to Sepolia
 
 on:
   pull_request:
@@ -20,9 +20,9 @@ env:
 
 jobs:
   deploy:
-    name: Deploy VendingMachine to Holesky
+    name: Deploy VendingMachine to Sepolia
     runs-on: ubuntu-latest
-    environment: holesky
+    environment: sepolia
     permissions:
       contents: read
       pull-requests: write
@@ -53,10 +53,10 @@ jobs:
       - name: Set environment
         id: network-env
         run: |
-          echo "RPC_URL=${{ secrets.HOLESKY_RPC_URL }}" >> $GITHUB_ENV
+          echo "RPC_URL=${{ secrets.SEPOLIA_RPC_URL }}" >> $GITHUB_ENV
           echo "ETHERSCAN_API=${{ secrets.ETHERSCAN_API_KEY }}" >> $GITHUB_ENV
-          echo "CHAIN_ID=17000" >> $GITHUB_ENV
-          echo "EXPLORER_URL=https://holesky.etherscan.io" >> $GITHUB_OUTPUT
+          echo "CHAIN_ID=11155111" >> $GITHUB_ENV
+          echo "EXPLORER_URL=https://sepolia.etherscan.io" >> $GITHUB_OUTPUT
           echo "PRIVATE_KEY=${{ secrets.DEPLOYER_PRIVATE_KEY }}" >> $GITHUB_ENV
 
       - name: Deploy VendingMachine
@@ -77,16 +77,27 @@ jobs:
           echo "VENDING_ADDRESS=$VENDING_ADDRESS" >> $GITHUB_OUTPUT
           echo "TOKEN_ADDRESS=$TOKEN_ADDRESS" >> $GITHUB_OUTPUT
 
+      - name: Wait for blockchain indexing
+        if: ${{ github.event.inputs.verify == 'true' || github.event.inputs.verify == null }}
+        run: |
+          echo "Waiting 30 seconds for blockchain indexing..."
+          sleep 30
+
       - name: Verify contracts
         if: ${{ github.event.inputs.verify == 'true' || github.event.inputs.verify == null }}
         continue-on-error: true
         run: |
           echo "Verifying VendingMachine at ${{ steps.deploy.outputs.VENDING_ADDRESS }}"
           
+          # Read constructor args from broadcast file
+          CONSTRUCTOR_ARGS=$(cat broadcast/DeployVendingMachine.s.sol/$CHAIN_ID/run-latest.json | jq -r '.transactions[] | select(.contractName == "VendingMachine") | .arguments')
+          
           forge verify-contract \
             --chain-id $CHAIN_ID \
             --watch \
             --etherscan-api-key $ETHERSCAN_API \
+            --constructor-args $CONSTRUCTOR_ARGS \
+            --compiler-version v0.8.20+commit.a1b79de6 \
             ${{ steps.deploy.outputs.VENDING_ADDRESS }} \
             src/contracts/VendingMachine.sol:VendingMachine
 
@@ -94,7 +105,7 @@ jobs:
         run: |
           echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Network: Holesky" >> $GITHUB_STEP_SUMMARY
+          echo "### Network: Sepolia" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Contract | Address | Explorer |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|---------|----------|" >> $GITHUB_STEP_SUMMARY
@@ -109,7 +120,7 @@ jobs:
       - name: Save deployment artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: deployment-holesky-${{ github.run_number }}
+          name: deployment-sepolia-${{ github.run_number }}
           path: |
             broadcast/
             out/
@@ -123,7 +134,7 @@ jobs:
             const tokenAddress = '${{ steps.deploy.outputs.TOKEN_ADDRESS }}';
             const explorerUrl = '${{ steps.network-env.outputs.EXPLORER_URL }}';
             
-            const comment = `## 🚀 Deployed to Holesky
+            const comment = `## 🚀 Deployed to Sepolia
             
             **VendingMachine**: [${vendingAddress}](${explorerUrl}/address/${vendingAddress})
             **VoteToken**: [${tokenAddress}](${explorerUrl}/address/${tokenAddress})

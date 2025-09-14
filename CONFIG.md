@@ -29,6 +29,7 @@ Configuration files are stored in the `config/` directory with the following str
 ## Network Configuration Files
 
 - `config/mainnet.json` - Ethereum mainnet (chain ID: 1)
+- `config/sepolia.json` - Sepolia testnet (chain ID: 11155111)
 - `config/holesky.json` - Holesky testnet (chain ID: 17000)
 - `config/local.json` - Local development (chain ID: 31337)
 
@@ -54,9 +55,9 @@ The deployment script validates the configuration before deployment:
 ## Example Deployment
 
 ```bash
-# Deploy to Holesky testnet (automatically uses config/holesky.json)
+# Deploy to Sepolia testnet (automatically uses config/sepolia.json)
 forge script script/DeployVendingMachine.s.sol:DeployVendingMachine \
-  --rpc-url $HOLESKY_RPC_URL \
+  --rpc-url $SEPOLIA_RPC_URL \
   --broadcast \
   --verify
 
