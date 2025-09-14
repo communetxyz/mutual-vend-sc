@@ -29,30 +29,33 @@ contract VendingMachineFuzzTest is Test {
   address public treasury = address(0x3);
   address public user = address(0x4);
 
-  uint8 constant NUM_TRACKS = 10;
-  uint256 constant MAX_STOCK = 100;
+  // Config-based deployment parameters
+  uint8 public constant NUM_TRACKS = 10;
+  uint256 public constant MAX_STOCK = 100;
+  string public constant TOKEN_NAME = 'VendingVotes';
+  string public constant TOKEN_SYMBOL = 'VVOTE';
 
   function setUp() public {
     vm.startPrank(owner);
 
-    // Deploy mock tokens
+    // Deploy mock tokens following config pattern
     usdc = new MockERC20('USD Coin', 'USDC');
     usdt = new MockERC20('Tether', 'USDT');
     dai = new MockERC20('DAI', 'DAI');
 
-    // Create initial accepted tokens array
+    // Create initial accepted tokens array as per config
     address[] memory acceptedTokens = new address[](3);
     acceptedTokens[0] = address(usdc);
     acceptedTokens[1] = address(usdt);
     acceptedTokens[2] = address(dai);
 
-    // Deploy vending machine
+    // Deploy vending machine with config-style parameters
     IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
     uint256[] memory initialStocks = new uint256[](0);
     uint256[] memory initialPrices = new uint256[](0);
 
     vendingMachine = new VendingMachine(
-      NUM_TRACKS, MAX_STOCK, 'VendingVotes', 'VVOTE', acceptedTokens, initialProducts, initialStocks, initialPrices
+      NUM_TRACKS, MAX_STOCK, TOKEN_NAME, TOKEN_SYMBOL, acceptedTokens, initialProducts, initialStocks, initialPrices
     );
 
     voteToken = vendingMachine.voteToken();
