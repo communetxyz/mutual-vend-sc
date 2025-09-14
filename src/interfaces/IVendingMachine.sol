@@ -32,19 +32,33 @@ interface IVendingMachine {
   }
 
   // Custom errors
+  /// @notice Thrown when an invalid track ID is provided
   error InvalidTrackId();
+  /// @notice Thrown when track count is zero during initialization
   error InvalidTrackCount();
+  /// @notice Thrown when product name is invalid
   error InvalidProductName();
+  /// @notice Thrown when price is zero or invalid
   error InvalidPrice();
+  /// @notice Thrown when stock amount is zero or exceeds maximum
   error InvalidStock();
+  /// @notice Thrown when withdrawal amount is zero or invalid
   error InvalidAmount();
+  /// @notice Thrown when track is not properly configured
   error TrackNotConfigured();
+  /// @notice Thrown when attempting to vend from a track without a set price
   error PriceNotSet();
+  /// @notice Thrown when track has insufficient stock for vending
   error InsufficientStock();
+  /// @notice Thrown when contract has insufficient balance for withdrawal
   error InsufficientBalance();
+  /// @notice Thrown when payment token is not in the accepted list
   error TokenNotAccepted();
+  /// @notice Thrown when zero address is provided where not allowed
   error ZeroAddress();
+  /// @notice Thrown when duplicate token addresses are provided
   error DuplicateToken();
+  /// @notice Thrown when array parameters have mismatched lengths
   error ArrayLengthMismatch();
 
   // Events
