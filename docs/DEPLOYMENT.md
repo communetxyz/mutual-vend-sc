@@ -5,6 +5,7 @@
 - [Prerequisites](#prerequisites)
 - [Environment Setup](#environment-setup)
 - [Local Deployment](#local-deployment)
+- [Sepolia Deployment](#sepolia-deployment)
 - [Holesky Deployment](#holesky-deployment)
 - [GitHub Actions Deployment](#github-actions-deployment)
 - [Post-Deployment](#post-deployment)
@@ -12,7 +13,7 @@
 
 ## Overview
 
-This guide covers the deployment process for the VendingMachine smart contracts to Holesky testnet and local development environments.
+This guide covers the deployment process for the VendingMachine smart contracts to Sepolia testnet, Holesky testnet, and local development environments.
 
 ## Prerequisites
 
@@ -61,6 +62,7 @@ Edit `.env` with your configuration:
 
 ```env
 # RPC URLs
+SEPOLIA_RPC=https://your-sepolia-rpc-provider.com
 HOLESKY_RPC=https://your-holesky-rpc-provider.com
 LOCAL_RPC=http://localhost:8545
 
@@ -86,7 +88,7 @@ TOKEN_SYMBOL="VMT"
 
 ```bash
 # In a separate terminal
-anvil --fork-url $HOLESKY_RPC
+anvil --fork-url $SEPOLIA_RPC  # or $HOLESKY_RPC
 ```
 
 ### 2. Deploy Contracts
@@ -107,6 +109,22 @@ The script will output:
 - VoteToken contract address
 - Configuration details (3 tracks, 8 max stock per track)
 
+## Sepolia Deployment
+
+### Deploy to Sepolia Testnet
+
+```bash
+# Deploy to Sepolia
+forge script script/DeployVendingMachine.s.sol:DeployVendingMachine \
+  --rpc-url $SEPOLIA_RPC \
+  --private-key $PRIVATE_KEY \
+  --broadcast \
+  --verify \
+  --etherscan-api-key $ETHERSCAN_API_KEY \
+  --slow \
+  -vvv
+```
+
 ## Holesky Deployment
 
 ### Deploy to Holesky Testnet
@@ -114,7 +132,7 @@ The script will output:
 ```bash
 # Deploy to Holesky
 forge script script/DeployVendingMachine.s.sol:DeployVendingMachine \
-  --rpc-url $HOLESKY_RPC \
+  --rpc-url $SEPOLIA_RPC  # or $HOLESKY_RPC \
   --private-key $PRIVATE_KEY \
   --broadcast \
   --verify \
@@ -133,6 +151,7 @@ Go to your repository's Settings > Secrets and variables > Actions, and add:
 |------------|-------------|---------|
 | `DEPLOYER_PRIVATE_KEY` | Private key for deployment | `0x...` (64 hex chars) |
 | `DEPLOYER_ADDRESS` | Address of the deployer | `0x...` (40 hex chars) |
+| `SEPOLIA_RPC_URL` | Sepolia RPC endpoint | `https://your-sepolia-provider.com` |
 | `HOLESKY_RPC_URL` | Holesky RPC endpoint | `https://your-holesky-provider.com` |
 | `ETHERSCAN_API_KEY` | For contract verification | Your Etherscan API key |
 
@@ -140,7 +159,7 @@ Go to your repository's Settings > Secrets and variables > Actions, and add:
 
 #### Manual Deployment
 1. Go to Actions tab in GitHub
-2. Select "Deploy to Holesky" workflow
+2. Select "Deploy to Sepolia" or "Deploy to Holesky" workflow
 3. Click "Run workflow"
 4. Choose whether to verify contracts
 5. Click "Run workflow"
@@ -168,7 +187,7 @@ If automatic verification fails:
 
 ```bash
 forge verify-contract \
-  --chain-id 17000 \
+  --chain-id 11155111 \  # Use 17000 for Holesky
   --watch \
   --etherscan-api-key $ETHERSCAN_API_KEY \
   --constructor-args $(cast abi-encode "constructor(uint8,uint256,string,string,address[],tuple[],uint256[],uint256[])" 3 8 "Vending Machine Token" "VMT" "[]" "[]" "[]" "[]") \
@@ -186,21 +205,21 @@ cast send $VENDING_MACHINE_ADDRESS \
   "loadTrack(uint8,(string,string),uint256)" \
   0 "(\"Coca Cola\",\"ipfs://QmCocaCola\")" 8 \
   --private-key $PRIVATE_KEY \
-  --rpc-url $HOLESKY_RPC
+  --rpc-url $SEPOLIA_RPC  # or $HOLESKY_RPC
 
 // Set track prices
 cast send $VENDING_MACHINE_ADDRESS \
   "setTrackPrice(uint8,uint256)" \
   0 2000000000000000000 \
   --private-key $PRIVATE_KEY \
-  --rpc-url $HOLESKY_RPC
+  --rpc-url $SEPOLIA_RPC  # or $HOLESKY_RPC
 
 // Configure accepted payment tokens
 cast send $VENDING_MACHINE_ADDRESS \
   "configurePaymentTokens(address[])" \
   "[0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8]" \
   --private-key $PRIVATE_KEY \
-  --rpc-url $HOLESKY_RPC
+  --rpc-url $SEPOLIA_RPC  # or $HOLESKY_RPC
 ```
 
 ### 3. Grant Roles
@@ -212,7 +231,7 @@ cast send $VENDING_MACHINE_ADDRESS \
   $(cast keccak "OPERATOR_ROLE()") \
   $OPERATOR_ADDRESS \
   --private-key $PRIVATE_KEY \
-  --rpc-url $HOLESKY_RPC
+  --rpc-url $SEPOLIA_RPC  # or $HOLESKY_RPC
 
 // Grant treasury role
 cast send $VENDING_MACHINE_ADDRESS \
@@ -220,7 +239,7 @@ cast send $VENDING_MACHINE_ADDRESS \
   $(cast keccak "TREASURY_ROLE()") \
   $TREASURY_ADDRESS \
   --private-key $PRIVATE_KEY \
-  --rpc-url $HOLESKY_RPC
+  --rpc-url $SEPOLIA_RPC  # or $HOLESKY_RPC
 ```
 
 ## Troubleshooting
@@ -229,6 +248,7 @@ cast send $VENDING_MACHINE_ADDRESS \
 
 1. **"Insufficient funds" error**
    - Ensure your deployer account has enough ETH for gas
+   - Sepolia faucet: https://sepolia-faucet.pk910.de/
    - Holesky faucet: https://holesky-faucet.pk910.de/
 
 2. **"Contract verification failed"**
@@ -250,7 +270,7 @@ cast send $VENDING_MACHINE_ADDRESS \
 - [ ] Environment variables configured
 - [ ] Sufficient ETH for gas
 - [ ] Repository secrets configured (for CI/CD)
-- [ ] Holesky RPC accessible
+- [ ] Sepolia or Holesky RPC accessible
 - [ ] Etherscan API key valid
 - [ ] Initial products/prices configured in script
 - [ ] Post-deployment configuration planned
@@ -259,6 +279,7 @@ cast send $VENDING_MACHINE_ADDRESS \
 
 | Network | Chain ID | Currency | Explorer |
 |---------|----------|----------|----------|
+| Sepolia | 11155111 | ETH | https://sepolia.etherscan.io |
 | Holesky | 17000 | ETH | https://holesky.etherscan.io |
 | Local | 31337 | ETH | N/A |
 

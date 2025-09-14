@@ -129,6 +129,8 @@ contract DeployVendingMachine is Script {
       configFile = 'mainnet.json';
     } else if (block.chainid == 17_000) {
       configFile = 'holesky.json';
+    } else if (block.chainid == 11_155_111) {
+      configFile = 'sepolia.json';
     } else if (block.chainid == 31_337) {
       configFile = 'local.json';
     } else {

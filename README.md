@@ -49,9 +49,9 @@ yarn test
 cp .env.example .env
 # Edit .env with your RPC URLs and private keys
 
-# 2. Deploy to Holesky testnet
+# 2. Deploy to Sepolia testnet
 forge script script/DeployVendingMachine.s.sol:DeployVendingMachine \
-  --rpc-url $HOLESKY_RPC \
+  --rpc-url $SEPOLIA_RPC \
   --private-key $PRIVATE_KEY \
   --broadcast \
   --verify \
@@ -64,11 +64,11 @@ The project includes automated deployment workflows:
 
 1. **Configure Repository Secrets**:
    - `DEPLOYER_PRIVATE_KEY` - Private key for deployments
-   - `HOLESKY_RPC_URL` - Holesky RPC endpoint
+   - `SEPOLIA_RPC_URL` - Sepolia RPC endpoint
    - `ETHERSCAN_API_KEY` - For contract verification
 
 2. **Trigger Deployment**:
-   - Manual: Go to Actions tab → "Deploy to Holesky" → Run workflow
+   - Manual: Go to Actions tab → "Deploy to Sepolia" → Run workflow
    - Automatic: On pull requests and pushes to `main` branch
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
