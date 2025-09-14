@@ -7,6 +7,8 @@ VendingMachineTest::constructor
 │   └── it reverts with InvalidTrackId
 ├── when arrays have mismatched lengths
 │   └── it reverts with ArrayLengthMismatch
+├── when accepted token address is not an IERC20 contract
+│   └── it reverts with ZeroAddress
 └── when all parameters are valid
     ├── it sets NUM_TRACKS correctly
     ├── it sets MAX_STOCK_PER_TRACK correctly
@@ -51,7 +53,7 @@ VendingMachineTest::restockTrack
 │   └── it reverts with AccessControlUnauthorizedAccount
 ├── when trackId is invalid
 │   └── it reverts with InvalidTrackId
-├── when new total stock exceeds MAX_STOCK_PER_TRACK
+├── when current stock plus additional stock exceeds MAX_STOCK_PER_TRACK
 │   └── it reverts with InvalidStock
 └── when parameters are valid
     ├── it increases the stock

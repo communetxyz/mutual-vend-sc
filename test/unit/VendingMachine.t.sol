@@ -157,6 +157,36 @@ contract VendingMachineTest is BaseTest {
     vm.stopPrank();
   }
 
+  function test_ConstructorWhenAcceptedTokenAddressIsNotAnIERC20Contract() external {
+    vm.startPrank(owner);
+
+    DeploymentConfig memory config = getDeploymentConfig();
+    
+    // Include a non-contract address (like an EOA) in accepted tokens
+    address[] memory acceptedTokens = new address[](2);
+    acceptedTokens[0] = address(usdc);
+    acceptedTokens[1] = address(0); // Zero address will trigger ZeroAddress error
+
+    IVendingMachine.Product[] memory initialProducts = new IVendingMachine.Product[](0);
+    uint256[] memory initialStocks = new uint256[](0);
+    uint256[] memory initialPrices = new uint256[](0);
+
+    // it reverts with ZeroAddress
+    vm.expectRevert(IVendingMachine.ZeroAddress.selector);
+    new VendingMachine(
+      config.numTracks,
+      config.maxStockPerTrack,
+      config.tokenName,
+      config.tokenSymbol,
+      acceptedTokens,
+      initialProducts,
+      initialStocks,
+      initialPrices
+    );
+
+    vm.stopPrank();
+  }
+
   function test_ConstructorWhenAllParametersAreValid() external {
     // Create custom config with initial products
     DeploymentConfig memory config;
@@ -396,7 +426,7 @@ contract VendingMachineTest is BaseTest {
     vendingMachine.restockTrack(DEFAULT_NUM_TRACKS, 10);
   }
 
-  function test_RestockTrackWhenNewTotalStockExceedsMAX_STOCK_PER_TRACK() external whenCalledByOperator {
+  function test_RestockTrackWhenCurrentStockPlusAdditionalStockExceedsMAX_STOCK_PER_TRACK() external whenCalledByOperator {
     IVendingMachine.Product memory product = IVendingMachine.Product({name: 'Soda', imageURI: 'ipfs://soda'});
     vendingMachine.loadTrack(0, product, 40);
 
