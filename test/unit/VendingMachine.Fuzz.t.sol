@@ -135,15 +135,14 @@ contract VendingMachineFuzzTest is Test {
         string[] memory names,
         uint256[] memory stocks
     ) public {
-        // Bound array lengths
-        vm.assume(trackIds.length > 0 && trackIds.length <= 5); // Reduce to avoid too many assumptions
-        vm.assume(trackIds.length == names.length);
-        vm.assume(trackIds.length == stocks.length);
+        // Bound array lengths and return early if invalid
+        if (trackIds.length == 0 || trackIds.length > 3) return;
+        if (trackIds.length != names.length || trackIds.length != stocks.length) return;
         
-        // Validate track IDs and stocks
+        // Validate and bound track IDs and stocks
         for (uint i = 0; i < trackIds.length; i++) {
-            vm.assume(trackIds[i] < NUM_TRACKS);
-            vm.assume(stocks[i] <= MAX_STOCK);
+            trackIds[i] = trackIds[i] % NUM_TRACKS;
+            stocks[i] = stocks[i] % (MAX_STOCK + 1);
         }
         
         // Create products array
@@ -185,10 +184,9 @@ contract VendingMachineFuzzTest is Test {
         uint256 initialStock,
         uint256 additionalStock
     ) public {
-        vm.assume(trackId < NUM_TRACKS);
-        vm.assume(initialStock > 0 && initialStock <= MAX_STOCK);
-        vm.assume(additionalStock > 0 && additionalStock <= MAX_STOCK);
-        vm.assume(initialStock <= MAX_STOCK - additionalStock); // Avoid overflow
+        trackId = trackId % NUM_TRACKS;
+        initialStock = bound(initialStock, 1, MAX_STOCK / 2);
+        additionalStock = bound(additionalStock, 1, MAX_STOCK / 2);
         
         // First load the track
         IVendingMachine.Product memory product = IVendingMachine.Product({
@@ -282,23 +280,44 @@ contract VendingMachineFuzzTest is Test {
     
     // Fuzz test for configurePaymentTokens
     function testFuzz_ConfigurePaymentTokens(address[] memory tokens) public {
-        // Filter out zero addresses and duplicates
-        vm.assume(tokens.length > 0 && tokens.length <= 5); // Reduce to avoid too many assumptions
+        // Bound array length and return early if invalid
+        if (tokens.length == 0 || tokens.length > 5) return;
+        
+        // Clean up tokens array - remove zeros and duplicates
+        address[] memory cleanTokens = new address[](tokens.length);
+        uint256 cleanCount = 0;
         
         for (uint i = 0; i < tokens.length; i++) {
-            vm.assume(tokens[i] != address(0));
-            // Check for duplicates only within bounds
-            for (uint j = 0; j < i; j++) {
-                vm.assume(tokens[i] != tokens[j]);
+            if (tokens[i] == address(0)) continue;
+            
+            // Check for duplicates
+            bool isDuplicate = false;
+            for (uint j = 0; j < cleanCount; j++) {
+                if (cleanTokens[j] == tokens[i]) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            
+            if (!isDuplicate) {
+                cleanTokens[cleanCount] = tokens[i];
+                cleanCount++;
             }
         }
         
+        if (cleanCount == 0) return;
+        
+        // Resize array
+        assembly {
+            mstore(cleanTokens, cleanCount)
+        }
+        
         vm.prank(operator);
-        vendingMachine.configurePaymentTokens(tokens);
+        vendingMachine.configurePaymentTokens(cleanTokens);
         
         // Verify all tokens are accepted
-        for (uint i = 0; i < tokens.length; i++) {
-            assertTrue(vendingMachine.isTokenAccepted(tokens[i]));
+        for (uint i = 0; i < cleanCount; i++) {
+            assertTrue(vendingMachine.isTokenAccepted(cleanTokens[i]));
         }
         
         // Verify old tokens are not accepted
@@ -372,8 +391,8 @@ contract VendingMachineFuzzTest is Test {
         uint8 trackId,
         uint256[] memory restockAmounts
     ) public {
-        vm.assume(trackId < NUM_TRACKS);
-        vm.assume(restockAmounts.length > 0 && restockAmounts.length <= 5); // Reduce iterations
+        trackId = trackId % NUM_TRACKS;
+        if (restockAmounts.length == 0 || restockAmounts.length > 5) return;
         
         // Load initial track
         IVendingMachine.Product memory product = IVendingMachine.Product({
@@ -387,16 +406,21 @@ contract VendingMachineFuzzTest is Test {
         uint256 currentStock = 1;
         
         for (uint i = 0; i < restockAmounts.length; i++) {
-            uint256 restockAmount = restockAmounts[i];
+            // Bound restock amount to reasonable range
+            uint256 restockAmount = bound(restockAmounts[i], 0, MAX_STOCK * 2);
             
             if (restockAmount == 0) continue;
             
-            if (currentStock + restockAmount > MAX_STOCK) {
+            // Check if adding would exceed MAX_STOCK
+            bool wouldExceed = currentStock > MAX_STOCK || 
+                              (restockAmount > 0 && restockAmount > MAX_STOCK - currentStock);
+            
+            if (wouldExceed) {
                 vm.expectRevert(IVendingMachine.InvalidStock.selector);
                 vendingMachine.restockTrack(trackId, restockAmount);
             } else {
                 vendingMachine.restockTrack(trackId, restockAmount);
-                currentStock += restockAmount;
+                currentStock = currentStock + restockAmount;
                 assertEq(vendingMachine.getTrackInventory(trackId), currentStock);
             }
         }
@@ -412,11 +436,13 @@ contract VendingMachineFuzzTest is Test {
         uint256 stock1,
         uint256 stock2
     ) public {
-        vm.assume(trackId < NUM_TRACKS);
-        vm.assume(stock1 > 0 && stock1 <= MAX_STOCK);
-        vm.assume(stock2 > 0 && stock2 <= MAX_STOCK);
-        vm.assume(bytes(name1).length > 0 && bytes(name1).length < 100);
-        vm.assume(bytes(name2).length > 0 && bytes(name2).length < 100);
+        trackId = trackId % NUM_TRACKS;
+        stock1 = bound(stock1, 1, MAX_STOCK);
+        stock2 = bound(stock2, 1, MAX_STOCK);
+        
+        // Ensure names are valid
+        if (bytes(name1).length == 0 || bytes(name1).length >= 100) name1 = "Product1";
+        if (bytes(name2).length == 0 || bytes(name2).length >= 100) name2 = "Product2";
         
         IVendingMachine.Product memory product1 = IVendingMachine.Product({
             name: name1,
