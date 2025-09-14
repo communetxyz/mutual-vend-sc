@@ -1,0 +1,43 @@
+{
+  "numTracks": 5,
+  "maxStockPerTrack": 10,
+  "tokenName": "Vending Machine Token",
+  "tokenSymbol": "VMT",
+  "acceptedTokens": [
+    "0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83",
+    "0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d",
+    "0x4ECaBa5870353805a9F068101A40E0f32ed605C6"
+  ],
+  "products": [
+    {
+      "name": "Coca Cola",
+      "ipfsHash": "ipfs://QmCocaCola",
+      "stock": 10,
+      "price": "2000000000000000000"
+    },
+    {
+      "name": "Pepsi",
+      "ipfsHash": "ipfs://QmPepsi",
+      "stock": 10,
+      "price": "2000000000000000000"
+    },
+    {
+      "name": "Water",
+      "ipfsHash": "ipfs://QmWater",
+      "stock": 10,
+      "price": "1000000000000000000"
+    },
+    {
+      "name": "Orange Juice",
+      "ipfsHash": "ipfs://QmOrangeJuice",
+      "stock": 8,
+      "price": "3000000000000000000"
+    },
+    {
+      "name": "Energy Drink",
+      "ipfsHash": "ipfs://QmEnergyDrink",
+      "stock": 5,
+      "price": "4000000000000000000"
+    }
+  ]
+}
