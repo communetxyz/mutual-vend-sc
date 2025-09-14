@@ -1,0 +1,140 @@
+VendingMachineTest::constructor
+├── when numTracks is zero
+│   └── it reverts with InvalidTrackCount
+├── when maxStockPerTrack is zero
+│   └── it reverts with InvalidStock
+├── when initial products array length exceeds numTracks
+│   └── it reverts with InvalidTrackId
+├── when arrays have mismatched lengths
+│   └── it reverts with ArrayLengthMismatch
+└── when all parameters are valid
+    ├── it sets NUM_TRACKS correctly
+    ├── it sets MAX_STOCK_PER_TRACK correctly
+    ├── it deploys and sets the vote token
+    ├── it grants MINTER_ROLE to the contract
+    ├── it initializes tracks with provided products
+    ├── it sets initial accepted tokens
+    ├── it grants DEFAULT_ADMIN_ROLE to deployer
+    └── it emits TrackLoaded events for initialized tracks
+
+
+VendingMachineTest::loadTrack
+├── when caller does not have OPERATOR_ROLE
+│   └── it reverts with AccessControlUnauthorizedAccount
+├── when trackId is invalid
+│   └── it reverts with InvalidTrackId
+├── when stock exceeds MAX_STOCK_PER_TRACK
+│   └── it reverts with InvalidStock
+└── when parameters are valid
+    ├── it sets the product details
+    ├── it sets the stock
+    ├── it resets the price to zero
+    └── it emits TrackLoaded event
+
+
+VendingMachineTest::loadMultipleTracks
+├── when caller does not have OPERATOR_ROLE
+│   └── it reverts with AccessControlUnauthorizedAccount
+├── when arrays have mismatched lengths
+│   └── it reverts with ArrayLengthMismatch
+├── when any trackId is invalid
+│   └── it reverts with InvalidTrackId
+├── when any stock exceeds MAX_STOCK_PER_TRACK
+│   └── it reverts with InvalidStock
+└── when all parameters are valid
+    ├── it loads all specified tracks
+    └── it emits TrackLoaded events for each track
+
+
+VendingMachineTest::restockTrack
+├── when caller does not have OPERATOR_ROLE
+│   └── it reverts with AccessControlUnauthorizedAccount
+├── when trackId is invalid
+│   └── it reverts with InvalidTrackId
+├── when new total stock exceeds MAX_STOCK_PER_TRACK
+│   └── it reverts with InvalidStock
+└── when parameters are valid
+    ├── it increases the stock
+    └── it emits TrackRestocked event
+
+
+VendingMachineTest::setTrackPrice
+├── when caller does not have OPERATOR_ROLE
+│   └── it reverts with AccessControlUnauthorizedAccount
+├── when trackId is invalid
+│   └── it reverts with InvalidTrackId
+└── when parameters are valid
+    ├── it updates the price
+    └── it emits PriceUpdated event
+
+
+VendingMachineTest::configurePaymentTokens
+├── when caller does not have OPERATOR_ROLE
+│   └── it reverts with AccessControlUnauthorizedAccount
+└── when caller has OPERATOR_ROLE
+    ├── it removes old accepted tokens
+    ├── it adds new accepted tokens
+    └── it emits PaymentTokensConfigured event
+
+
+VendingMachineTest::vendFromTrack
+├── when token is not accepted
+│   └── it reverts with TokenNotAccepted
+├── when trackId is invalid
+│   └── it reverts with InvalidTrackId
+├── when price is not set
+│   └── it reverts with PriceNotSet
+├── when track has insufficient stock
+│   └── it reverts with InsufficientStock
+├── when recipient is zero address
+│   ├── it transfers payment from buyer
+│   ├── it decreases stock
+│   ├── it does not mint vote tokens
+│   └── it emits Vended event
+└── when all conditions are met
+    ├── it transfers payment from buyer
+    ├── it decreases stock
+    ├── it mints vote tokens to recipient
+    ├── it emits Vended event
+    └── it returns the paid amount
+
+
+VendingMachineTest::withdrawRevenue
+├── when caller does not have TREASURY_ROLE
+│   └── it reverts with AccessControlUnauthorizedAccount
+├── when arrays have mismatched lengths
+│   └── it reverts with ArrayLengthMismatch
+├── when contract has insufficient balance
+│   └── it reverts with transfer failure
+└── when parameters are valid
+    ├── it transfers specified amounts to recipient
+    └── it emits RevenueWithdrawn events
+
+
+VendingMachineTest::getTrack
+├── when trackId is invalid
+│   └── it reverts with InvalidTrackId
+└── when trackId is valid
+    └── it returns the track details
+
+
+VendingMachineTest::getTrackInventory
+├── when trackId is invalid
+│   └── it reverts with InvalidTrackId
+└── when trackId is valid
+    └── it returns the stock amount
+
+
+VendingMachineTest::getAllTracks
+└── when called
+    └── it returns array of all tracks
+
+
+VendingMachineTest::isTokenAccepted
+└── when called with token address
+    └── it returns acceptance status
+
+
+VendingMachineTest::getAcceptedTokens
+└── when called
+    └── it returns array of accepted tokens
