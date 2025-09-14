@@ -111,7 +111,7 @@ jobs:
             src/contracts/VendingMachine.sol:VendingMachine \
             --chain-id $CHAIN_ID \
             --etherscan-api-key $GNOSISSCAN_API \
-            --compiler-version v0.8.20+commit.a1b79de6 \
+            --compiler-version v0.8.23+commit.f704f362 \
             --verifier-url https://api.gnosisscan.io/api \
             --watch || {
               echo "::error::Contract verification failed"
