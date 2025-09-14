@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: gnosis-mainnet
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     
     steps:
