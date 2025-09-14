@@ -4,9 +4,7 @@
   "tokenName": "Vending Machine Token",
   "tokenSymbol": "VMT",
   "acceptedTokens": [
-    "0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83",
-    "0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d",
-    "0x4ECaBa5870353805a9F068101A40E0f32ed605C6"
+    "0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3"
   ],
   "products": [
     {
