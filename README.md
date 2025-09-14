@@ -89,6 +89,36 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instruction
 
 - `vendFromTrack(trackId, token, recipient)` - Purchase item from specific track
 
+### Making a Purchase on Sepolia
+
+To purchase from the VendingMachine on Sepolia testnet:
+
+```bash
+# Prerequisites: Get Sepolia USDC
+# You need Sepolia USDC tokens. The token address is:
+# 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
+
+# Set environment variables
+export PRIVATE_KEY=your_private_key
+export SEPOLIA_RPC=your_sepolia_rpc_url
+export VENDING_MACHINE_ADDRESS=deployed_contract_address
+
+# Option 1: Use the convenience script
+./scripts/purchase-sepolia.sh
+
+# Option 2: Use forge directly
+forge script script/PurchaseFromVendingMachine.s.sol:PurchaseFromVendingMachine \
+  --rpc-url $SEPOLIA_RPC \
+  --broadcast \
+  -vvv
+```
+
+The purchase script will:
+1. Check your USDC balance
+2. Approve the VendingMachine to spend USDC
+3. Purchase from track 1 (Coca Cola)
+4. Display the vote tokens received
+
 #### For Treasury
 
 - `withdrawRevenue(token, to, amount)` - Withdraw collected payments
