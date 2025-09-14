@@ -88,6 +88,14 @@ jobs:
         run: |
           echo "Verifying VendingMachine at ${{ steps.deploy.outputs.VENDING_ADDRESS }}"
           
+          # Get compiler version from foundry.toml
+          SOLC_VERSION=$(grep 'solc_version' foundry.toml | cut -d'"' -f2)
+          echo "Using Solidity compiler version: $SOLC_VERSION"
+          
+          # Get the exact compiler version metadata from the compiled artifact
+          COMPILER_VERSION=$(cat out/VendingMachine.sol/VendingMachine.json | jq -r '.metadata.compiler.version')
+          echo "Exact compiler version from artifact: $COMPILER_VERSION"
+          
           # Extract constructor arguments from broadcast file
           BROADCAST_FILE="broadcast/DeployVendingMachine.s.sol/$CHAIN_ID/run-latest.json"
           echo "Reading constructor arguments from: $BROADCAST_FILE"
@@ -108,7 +116,7 @@ jobs:
             src/contracts/VendingMachine.sol:VendingMachine \
             --chain-id $CHAIN_ID \
             --etherscan-api-key $ETHERSCAN_API \
-            --compiler-version v0.8.23+commit.f704f362 \
+            --compiler-version "v${COMPILER_VERSION}" \
             --watch || {
               echo "::error::Contract verification failed"
               exit 1
