@@ -127,6 +127,8 @@ contract DeployVendingMachine is Script {
 
     if (block.chainid == 1) {
       configFile = 'mainnet.json';
+    } else if (block.chainid == 100) {
+      configFile = 'gnosis.json';
     } else if (block.chainid == 17_000) {
       configFile = 'holesky.json';
     } else if (block.chainid == 11_155_111) {

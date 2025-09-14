@@ -1,0 +1,391 @@
+name: Deploy to Gnosis Chain
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      verify:
+        description: 'Verify contracts on Gnosisscan'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  FOUNDRY_PROFILE: default
+
+jobs:
+  deploy:
+    name: Deploy VendingMachine to Gnosis Chain
+    runs-on: ubuntu-latest
+    environment: gnosis-mainnet
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build contracts
+        run: forge build
+
+      - name: Set environment
+        id: network-env
+        run: |
+          echo "RPC_URL=${{ secrets.GNOSIS_RPC_URL }}" >> $GITHUB_ENV
+          echo "GNOSISSCAN_API=${{ secrets.GNOSISSCAN_API_KEY }}" >> $GITHUB_ENV
+          echo "CHAIN_ID=100" >> $GITHUB_ENV
+          echo "EXPLORER_URL=https://gnosisscan.io" >> $GITHUB_OUTPUT
+          echo "PRIVATE_KEY=${{ secrets.MAINNET_DEPLOYER_PRIVATE_KEY }}" >> $GITHUB_ENV
+
+      - name: Deploy VendingMachine
+        id: deploy
+        run: |
+          OUTPUT=$(forge script script/DeployVendingMachine.s.sol:DeployVendingMachine \
+            --rpc-url $RPC_URL \
+            --broadcast \
+            --slow \
+            --legacy \
+            -vvv)
+          
+          echo "$OUTPUT"
+          
+          # Extract deployed addresses from output
+          VENDING_ADDRESS=$(echo "$OUTPUT" | grep -o "VendingMachine deployed at: 0x[a-fA-F0-9]*" | awk '{print $4}')
+          TOKEN_ADDRESS=$(echo "$OUTPUT" | grep -o "VoteToken deployed at: 0x[a-fA-F0-9]*" | awk '{print $4}')
+          
+          # Extract transaction hash from broadcast file
+          BROADCAST_FILE="broadcast/DeployVendingMachine.s.sol/$CHAIN_ID/run-latest.json"
+          if [ -f "$BROADCAST_FILE" ]; then
+            DEPLOY_TX_HASH=$(cat $BROADCAST_FILE | jq -r '.transactions[] | select(.contractName == "VendingMachine") | .hash' | head -1)
+            echo "Deployment transaction hash: $DEPLOY_TX_HASH"
+          else
+            DEPLOY_TX_HASH=""
+          fi
+          
+          echo "VENDING_ADDRESS=$VENDING_ADDRESS" >> $GITHUB_OUTPUT
+          echo "TOKEN_ADDRESS=$TOKEN_ADDRESS" >> $GITHUB_OUTPUT
+          echo "DEPLOY_TX_HASH=$DEPLOY_TX_HASH" >> $GITHUB_OUTPUT
+
+      - name: Wait for blockchain indexing
+        if: ${{ github.event.inputs.verify == 'true' || github.event.inputs.verify == null }}
+        run: |
+          echo "Waiting 60 seconds for blockchain indexing..."
+          sleep 60
+
+      - name: Verify contracts
+        if: ${{ github.event.inputs.verify == 'true' || github.event.inputs.verify == null }}
+        run: |
+          echo "Verifying VendingMachine at ${{ steps.deploy.outputs.VENDING_ADDRESS }}"
+          
+          # Get compiler version from foundry.toml
+          SOLC_VERSION=$(grep 'solc_version' foundry.toml | cut -d'"' -f2)
+          echo "Using Solidity compiler version: $SOLC_VERSION"
+          
+          # Get the exact compiler version metadata from the compiled artifact
+          COMPILER_VERSION=$(cat out/VendingMachine.sol/VendingMachine.json | jq -r '.metadata.compiler.version')
+          echo "Exact compiler version from artifact: $COMPILER_VERSION"
+          
+          # Extract constructor arguments from broadcast file
+          BROADCAST_FILE="broadcast/DeployVendingMachine.s.sol/$CHAIN_ID/run-latest.json"
+          echo "Reading constructor arguments from: $BROADCAST_FILE"
+          
+          # Get the transaction that deployed VendingMachine
+          DEPLOY_TX=$(cat $BROADCAST_FILE | jq -r '.transactions[] | select(.contractName == "VendingMachine")')
+          
+          # Extract constructor arguments (removing the 0x prefix and bytecode)
+          # The arguments field contains the raw constructor arguments
+          CONSTRUCTOR_ARGS=$(echo "$DEPLOY_TX" | jq -r '.arguments' | sed 's/\[//g' | sed 's/\]//g' | sed 's/"//g' | sed 's/,//g' | sed 's/ //g')
+          
+          echo "Constructor arguments: $CONSTRUCTOR_ARGS"
+          
+          # Build the constructor arguments string for forge verify-contract
+          # The VendingMachine constructor takes multiple parameters, we need to encode them properly
+          forge verify-contract \
+            ${{ steps.deploy.outputs.VENDING_ADDRESS }} \
+            src/contracts/VendingMachine.sol:VendingMachine \
+            --chain-id $CHAIN_ID \
+            --etherscan-api-key $GNOSISSCAN_API \
+            --compiler-version "v${COMPILER_VERSION}" \
+            --verifier-url https://api.gnosisscan.io/api \
+            --watch || {
+              echo "::error::Contract verification failed"
+              exit 1
+            }
+
+      - name: Test purchase from VendingMachine
+        id: test-purchase
+        run: |
+          echo "Testing purchase from newly deployed VendingMachine..."
+          
+          # Export the VendingMachine address for the purchase script
+          export VENDING_MACHINE_ADDRESS=${{ steps.deploy.outputs.VENDING_ADDRESS }}
+          
+          # Get deployer address from private key
+          DEPLOYER_ADDRESS=$(cast wallet address $PRIVATE_KEY)
+          TOKEN_ADDRESS="0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3"
+          
+          echo "Checking token balance for deployer: $DEPLOYER_ADDRESS"
+          TOKEN_BALANCE=$(cast call $TOKEN_ADDRESS "balanceOf(address)(uint256)" $DEPLOYER_ADDRESS --rpc-url $RPC_URL)
+          echo "Token balance: $TOKEN_BALANCE"
+          
+          # Run the purchase script - it will fail if insufficient balance
+          OUTPUT=$(forge script script/PurchaseFromGnosis.s.sol:PurchaseFromGnosis \
+            --rpc-url $RPC_URL \
+            --broadcast \
+            --slow \
+            --legacy \
+            -vvv) || {
+            echo "::error::Purchase test failed. Ensure deployer has sufficient token balance."
+            echo "::error::Deployer: $DEPLOYER_ADDRESS"
+            echo "::error::Token: $TOKEN_ADDRESS"
+            echo "::error::Balance: $TOKEN_BALANCE"
+            exit 1
+          }
+          
+          echo "$OUTPUT"
+          
+          # Extract the actual purchase transaction hash from broadcast file
+          # The second transaction in the array is the vendFromTrack call
+          BROADCAST_FILE="broadcast/PurchaseFromGnosis.s.sol/$CHAIN_ID/run-latest.json"
+          if [ -f "$BROADCAST_FILE" ]; then
+            # Get the hash of the vendFromTrack transaction (usually the second transaction)
+            PURCHASE_TX=$(cat $BROADCAST_FILE | jq -r '.transactions[] | select(.transaction.to == "'${{ steps.deploy.outputs.VENDING_ADDRESS }}'" and .transactionType == "CALL") | .hash' | head -1)
+            
+            if [ -z "$PURCHASE_TX" ]; then
+              # Fallback: get the last transaction hash
+              PURCHASE_TX=$(cat $BROADCAST_FILE | jq -r '.transactions[-1].hash')
+            fi
+            
+            if [ -n "$PURCHASE_TX" ] && [ "$PURCHASE_TX" != "null" ]; then
+              echo "PURCHASE_TX=$PURCHASE_TX" >> $GITHUB_OUTPUT
+              echo "Purchase transaction hash: $PURCHASE_TX"
+            else
+              echo "::warning::No purchase transaction found, but script succeeded"
+            fi
+          else
+            echo "::warning::No broadcast file found for purchase test"
+          fi
+
+      - name: Create deployment artifact JSON
+        id: create-artifact
+        run: |
+          # Create deployment artifact JSON
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          cat > deployment-gnosis.json << EOF
+          {
+            "network": "gnosis",
+            "chainId": 100,
+            "contracts": {
+              "vendingMachine": "${{ steps.deploy.outputs.VENDING_ADDRESS }}",
+              "voteToken": "${{ steps.deploy.outputs.TOKEN_ADDRESS }}"
+            },
+            "transactions": {
+              "deployment": "${{ steps.deploy.outputs.DEPLOY_TX_HASH }}",
+              "testPurchase": "${{ steps.test-purchase.outputs.PURCHASE_TX }}"
+            },
+            "metadata": {
+              "timestamp": "$TIMESTAMP",
+              "commitHash": "${{ github.sha }}",
+              "deployer": "$(cast wallet address $PRIVATE_KEY)",
+              "rpcUrl": "https://rpc.gnosischain.com",
+              "explorerUrl": "https://gnosisscan.io",
+              "acceptedTokens": ["0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3"]
+            },
+            "version": "${{ github.event.release.tag_name || github.run_number }}",
+            "abi": {
+              "vendingMachine": "https://github.com/communetxyz/mutual-vend-sc/blob/${{ github.sha }}/src/interfaces/IVendingMachine.sol"
+            }
+          }
+          EOF
+          
+          echo "Deployment artifact created: deployment-gnosis.json"
+          cat deployment-gnosis.json
+
+      - name: Create deployment summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Network: Gnosis Chain (Mainnet)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract | Address | Explorer |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|----------|" >> $GITHUB_STEP_SUMMARY
+          echo "| VendingMachine | \`${{ steps.deploy.outputs.VENDING_ADDRESS }}\` | [View](${{ steps.network-env.outputs.EXPLORER_URL }}/address/${{ steps.deploy.outputs.VENDING_ADDRESS }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| VoteToken | \`${{ steps.deploy.outputs.TOKEN_ADDRESS }}\` | [View](${{ steps.network-env.outputs.EXPLORER_URL }}/address/${{ steps.deploy.outputs.TOKEN_ADDRESS }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
+          echo "- Deployer: \`$(cast wallet address $PRIVATE_KEY)\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.deploy.outputs.DEPLOY_TX_HASH }}" ]; then
+            echo "- Deployment Tx: [\`${{ steps.deploy.outputs.DEPLOY_TX_HASH }}\`](${{ steps.network-env.outputs.EXPLORER_URL }}/tx/${{ steps.deploy.outputs.DEPLOY_TX_HASH }})" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "- Release: \`${{ github.event.release.tag_name }}\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Purchase" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.test-purchase.outputs.PURCHASE_TX }}" ]; then
+            echo "✅ Test purchase successful: [\`${{ steps.test-purchase.outputs.PURCHASE_TX }}\`](${{ steps.network-env.outputs.EXPLORER_URL }}/tx/${{ steps.test-purchase.outputs.PURCHASE_TX }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Purchase script validated successfully" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Save deployment artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-gnosis-${{ github.run_number }}
+          path: |
+            broadcast/
+            out/
+            deployment-gnosis.json
+
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const vendingAddress = '${{ steps.deploy.outputs.VENDING_ADDRESS }}';
+            const tokenAddress = '${{ steps.deploy.outputs.TOKEN_ADDRESS }}';
+            const deployTxHash = '${{ steps.deploy.outputs.DEPLOY_TX_HASH }}';
+            const explorerUrl = '${{ steps.network-env.outputs.EXPLORER_URL }}';
+            const purchaseTx = '${{ steps.test-purchase.outputs.PURCHASE_TX }}';
+            
+            let comment = `## 🚀 Deployed to Gnosis Chain
+            
+            ### Contract Addresses
+            **VendingMachine**: [${vendingAddress}](${explorerUrl}/address/${vendingAddress})
+            **VoteToken**: [${tokenAddress}](${explorerUrl}/address/${tokenAddress})
+            
+            ### Transaction Details`;
+            
+            if (deployTxHash) {
+              comment += `\n📝 **Deployment Tx**: [${deployTxHash}](${explorerUrl}/tx/${deployTxHash})`;
+            }
+            
+            if (purchaseTx) {
+              comment += `\n✅ **Test Purchase Tx**: [${purchaseTx}](${explorerUrl}/tx/${purchaseTx})`;
+            } else {
+              comment += `\n✅ **Test Purchase**: Validated successfully`;
+            }
+            
+            comment += `\n\n**Deployed from commit**: ${context.sha}`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Create release on main push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: create_release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Generate version based on timestamp
+            const now = new Date();
+            const version = `v${now.getFullYear()}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getDate().toString().padStart(2, '0')}-${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+            
+            const vendingAddress = '${{ steps.deploy.outputs.VENDING_ADDRESS }}';
+            const tokenAddress = '${{ steps.deploy.outputs.TOKEN_ADDRESS }}';
+            const deployTxHash = '${{ steps.deploy.outputs.DEPLOY_TX_HASH }}';
+            const purchaseTx = '${{ steps.test-purchase.outputs.PURCHASE_TX }}';
+            const explorerUrl = '${{ steps.network-env.outputs.EXPLORER_URL }}';
+            
+            const releaseBody = `## 🎉 Gnosis Chain Deployment
+            
+            ### Contract Addresses
+            **VendingMachine**: [${vendingAddress}](${explorerUrl}/address/${vendingAddress})
+            **VoteToken**: [${tokenAddress}](${explorerUrl}/address/${tokenAddress})
+            
+            ### Transaction Details
+            📝 **Deployment Tx**: [${deployTxHash}](${explorerUrl}/tx/${deployTxHash})
+            ${purchaseTx ? `✅ **Test Purchase Tx**: [${purchaseTx}](${explorerUrl}/tx/${purchaseTx})` : '✅ **Test Purchase**: Validated'}
+            
+            ### Deployment Info
+            - **Network**: Gnosis Chain (Chain ID: 100)
+            - **Commit**: ${context.sha}
+            - **Timestamp**: ${new Date().toISOString()}
+            
+            ### 📦 Deployment Artifact
+            Download \`deployment-gnosis.json\` from the release assets for programmatic access to contract addresses.`;
+            
+            const release = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: version,
+              name: `Gnosis Deployment ${version}`,
+              body: releaseBody,
+              draft: false,
+              prerelease: false,
+              target_commitish: context.sha
+            });
+            
+            core.setOutput('release_id', release.data.id);
+            core.setOutput('upload_url', release.data.upload_url);
+            console.log(`Created release ${version}`);
+
+      - name: Upload deployment artifact to release
+        if: (github.event_name == 'release') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url || steps.create_release.outputs.upload_url }}
+          asset_path: ./deployment-gnosis.json
+          asset_name: deployment-gnosis.json
+          asset_content_type: application/json
+
+      - name: Create release deployment summary
+        if: github.event_name == 'release' && github.event_name != 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const vendingAddress = '${{ steps.deploy.outputs.VENDING_ADDRESS }}';
+            const tokenAddress = '${{ steps.deploy.outputs.TOKEN_ADDRESS }}';
+            const explorerUrl = '${{ steps.network-env.outputs.EXPLORER_URL }}';
+            const deployTxHash = '${{ steps.deploy.outputs.DEPLOY_TX_HASH }}';
+            
+            const body = `## 🎉 Gnosis Chain Deployment
+            
+            **VendingMachine**: [${vendingAddress}](${explorerUrl}/address/${vendingAddress})
+            **VoteToken**: [${tokenAddress}](${explorerUrl}/address/${tokenAddress})
+            
+            **Deployment Tx**: [${deployTxHash}](${explorerUrl}/tx/${deployTxHash})
+            
+            **Network**: Gnosis Chain (Chain ID: 100)
+            **Deployed from**: ${context.sha}
+            **Timestamp**: ${new Date().toISOString()}
+            
+            ### 📦 Deployment Artifact
+            Download \`deployment-gnosis.json\` from the release assets for programmatic access to contract addresses.`;
+            
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+              body: context.payload.release.body + '\n\n---\n\n' + body
+            });

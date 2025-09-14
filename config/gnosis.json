@@ -1,0 +1,29 @@
+{
+  "numTracks": 3,
+  "maxStockPerTrack": 10,
+  "tokenName": "Vending Machine Token",
+  "tokenSymbol": "VMT",
+  "acceptedTokens": [
+    "0xa555d5344f6FB6c65da19e403Cb4c1eC4a1a5Ee3"
+  ],
+  "products": [
+    {
+      "name": "Coca Cola",
+      "ipfsHash": "ipfs://QmCocaCola",
+      "stock": 10,
+      "price": "200000000000000000"
+    },
+    {
+      "name": "Pepsi",
+      "ipfsHash": "ipfs://QmPepsi",
+      "stock": 10,
+      "price": "200000000000000000"
+    },
+    {
+      "name": "Water",
+      "ipfsHash": "ipfs://QmWater",
+      "stock": 10,
+      "price": "200000000000000000"
+    }
+  ]
+}
