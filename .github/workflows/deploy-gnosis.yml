@@ -299,19 +299,68 @@ jobs:
               body: comment
             });
 
+      - name: Create release on main push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: create_release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Generate version based on timestamp
+            const now = new Date();
+            const version = `v${now.getFullYear()}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getDate().toString().padStart(2, '0')}-${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+            
+            const vendingAddress = '${{ steps.deploy.outputs.VENDING_ADDRESS }}';
+            const tokenAddress = '${{ steps.deploy.outputs.TOKEN_ADDRESS }}';
+            const deployTxHash = '${{ steps.deploy.outputs.DEPLOY_TX_HASH }}';
+            const purchaseTx = '${{ steps.test-purchase.outputs.PURCHASE_TX }}';
+            const explorerUrl = '${{ steps.network-env.outputs.EXPLORER_URL }}';
+            
+            const releaseBody = `## 🎉 Gnosis Chain Deployment
+            
+            ### Contract Addresses
+            **VendingMachine**: [${vendingAddress}](${explorerUrl}/address/${vendingAddress})
+            **VoteToken**: [${tokenAddress}](${explorerUrl}/address/${tokenAddress})
+            
+            ### Transaction Details
+            📝 **Deployment Tx**: [${deployTxHash}](${explorerUrl}/tx/${deployTxHash})
+            ${purchaseTx ? `✅ **Test Purchase Tx**: [${purchaseTx}](${explorerUrl}/tx/${purchaseTx})` : '✅ **Test Purchase**: Validated'}
+            
+            ### Deployment Info
+            - **Network**: Gnosis Chain (Chain ID: 100)
+            - **Commit**: ${context.sha}
+            - **Timestamp**: ${new Date().toISOString()}
+            
+            ### 📦 Deployment Artifact
+            Download \`deployment-gnosis.json\` from the release assets for programmatic access to contract addresses.`;
+            
+            const release = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: version,
+              name: `Gnosis Deployment ${version}`,
+              body: releaseBody,
+              draft: false,
+              prerelease: false,
+              target_commitish: context.sha
+            });
+            
+            core.setOutput('release_id', release.data.id);
+            core.setOutput('upload_url', release.data.upload_url);
+            console.log(`Created release ${version}`);
+
       - name: Upload deployment artifact to release
-        if: github.event_name == 'release'
+        if: (github.event_name == 'release') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ github.event.release.upload_url }}
+          upload_url: ${{ github.event.release.upload_url || steps.create_release.outputs.upload_url }}
           asset_path: ./deployment-gnosis.json
           asset_name: deployment-gnosis.json
           asset_content_type: application/json
 
       - name: Create release deployment summary
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && github.event_name != 'push'
         uses: actions/github-script@v7
         with:
           script: |
