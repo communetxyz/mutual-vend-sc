@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "setup": "# Copy configuration files\n# cp \"$CONDUCTOR_ROOT_PATH/.env\" .\n\n# Install dependencies\n# pnpm install\nyarn install\nyarn build ",
+    "run": "# Run tests or a dev server, for example:\n# pnpm run dev\n# pytest\n# python -m http.server $CONDUCTOR_PORT\nyarn test"
+  },
+  "runScriptMode": "concurrent"
+}
