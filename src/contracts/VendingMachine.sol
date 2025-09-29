@@ -162,9 +162,10 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     }
 
     // Notify treasury distributor if configured
+    // Pass recipient as-is (can be address(0) if no vote tokens were minted)
     if (address(treasuryDistributor) != address(0)) {
       treasuryDistributor.onPurchase(
-        recipient != address(0) ? recipient : msg.sender,
+        recipient,
         token,
         price
       );

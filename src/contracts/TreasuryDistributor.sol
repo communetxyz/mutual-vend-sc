@@ -98,9 +98,23 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
     uint256 amount
   ) external override {
     if (msg.sender != address(vendingMachine)) revert NotAuthorized();
-    if (buyer == address(0)) revert InvalidAddress();
     if (!isAllowedToken[token]) revert InvalidAddress();
     if (amount == 0) revert InvalidAmount();
+
+    // Split revenue
+    uint256 stockerAmount = (amount * stockerShareBps) / 10000;
+    uint256 consumerAmount = amount - stockerAmount;
+    
+    // Always track stocker revenue
+    stockerRevenue[token] += stockerAmount;
+    
+    // If buyer is address(0), stocker still gets their share
+    // but the consumer portion is not distributed (effectively burned/kept by treasury)
+    if (buyer == address(0)) {
+      // No buyer to track, consumer portion stays in vending machine
+      emit PurchaseTracked(buyer, token, amount, stockerAmount, consumerAmount);
+      return;
+    }
 
     // Add buyer to current cycle if not already added
     if (!isInCurrentCycle[buyer]) {
@@ -118,11 +132,7 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
     totalEligible = totalEligible - eligibleBalance[buyer] + newEligible;
     eligibleBalance[buyer] = newEligible;
 
-    // Split and track revenue
-    uint256 stockerAmount = (amount * stockerShareBps) / 10000;
-    uint256 consumerAmount = amount - stockerAmount;
-    
-    stockerRevenue[token] += stockerAmount;
+    // Track consumer revenue for distribution
     consumerRevenue[token] += consumerAmount;
 
     emit PurchaseTracked(buyer, token, amount, stockerAmount, consumerAmount);
