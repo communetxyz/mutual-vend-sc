@@ -276,17 +276,15 @@ contract TreasuryDistributorTest is Test {
     vm.startPrank(alice);
     usdc.approve(address(vendingMachine), PRODUCT_PRICE);
     
-    // Vend with no recipient (no vote tokens minted)
+    // Vend with no recipient (no vote tokens minted, no revenue sharing)
     vendingMachine.vendFromTrack(0, address(usdc), address(0));
     vm.stopPrank();
 
     // Check that no buyer was tracked
     assertEq(distributor.getCurrentBuyerCount(), 0);
     
-    // Stocker revenue should still be tracked
-    assertEq(distributor.getStockerRevenue(address(usdc)), 2 * 10 ** 18); // 20% of $10
-    
-    // Consumer revenue should NOT be tracked (stays in vending machine)
+    // No revenue should be tracked at all (onPurchase not called)
+    assertEq(distributor.getStockerRevenue(address(usdc)), 0);
     assertEq(distributor.getConsumerRevenue(address(usdc)), 0);
     
     // No eligible balance for address(0)
@@ -301,7 +299,7 @@ contract TreasuryDistributorTest is Test {
     vm.startPrank(alice);
     usdc.approve(address(vendingMachine), PRODUCT_PRICE * 2);
     vendingMachine.vendFromTrack(0, address(usdc), alice); // With recipient
-    vendingMachine.vendFromTrack(0, address(usdc), address(0)); // Without recipient
+    vendingMachine.vendFromTrack(0, address(usdc), address(0)); // Without recipient (no revenue sharing)
     vm.stopPrank();
 
     // Bob buys with recipient
@@ -310,13 +308,11 @@ contract TreasuryDistributorTest is Test {
     vendingMachine.vendFromTrack(0, address(usdc), bob);
     vm.stopPrank();
 
-    // Only 2 buyers tracked (alice and bob, not address(0))
+    // Only 2 buyers tracked (alice and bob)
     assertEq(distributor.getCurrentBuyerCount(), 2);
     
-    // Stocker gets revenue from all 3 purchases
-    assertEq(distributor.getStockerRevenue(address(usdc)), 6 * 10 ** 18); // 20% of $30
-    
-    // Consumer revenue only from purchases with recipients (2 out of 3)
+    // Revenue only from purchases with recipients (2 out of 3)
+    assertEq(distributor.getStockerRevenue(address(usdc)), 4 * 10 ** 18); // 20% of $20 (2 purchases)
     assertEq(distributor.getConsumerRevenue(address(usdc)), 16 * 10 ** 18); // 80% of $20
     
     // Move time forward and distribute
@@ -330,15 +326,15 @@ contract TreasuryDistributorTest is Test {
     
     distributor.distribute();
     
-    // Stocker gets full 20% of all $30
-    assertEq(usdc.balanceOf(stocker), stockerBalanceBefore + 6 * 10 ** 18);
+    // Stocker gets 20% of only the $20 (purchases with recipients)
+    assertEq(usdc.balanceOf(stocker), stockerBalanceBefore + 4 * 10 ** 18);
     
-    // Alice and Bob split the consumer revenue from their purchases only
+    // Alice and Bob split the consumer revenue
     // Alice has $10 vote tokens, Bob has $10 vote tokens (50/50 split of $16)
     assertApproxEqAbs(usdc.balanceOf(alice), aliceBalanceBefore + 8 * 10 ** 18, 1e16);
     assertApproxEqAbs(usdc.balanceOf(bob), bobBalanceBefore + 8 * 10 ** 18, 1e16);
     
-    // The $8 consumer portion from the no-recipient purchase stays in vending machine
-    // (not distributed to anyone)
+    // The entire $10 from the no-recipient purchase stays in vending machine
+    // (no revenue sharing at all for that purchase)
   }
 }
