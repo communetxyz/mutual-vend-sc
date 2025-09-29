@@ -51,11 +51,6 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
 
       // Initialize with products if provided
       if (i < _initialProducts.length) {
-        // Validate stocker address
-        if (_initialProducts[i].stockerAddress == address(0)) revert ZeroAddress();
-        // Validate stocker share is not more than 100%
-        if (_initialProducts[i].stockerShareBps > 10000) revert InvalidAmount();
-        
         tracks[i].product = _initialProducts[i];
 
         if (i < _initialStocks.length) {
@@ -102,28 +97,16 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     }
   }
 
-  function restockTrack(uint8 trackId, uint256 additionalStock, uint256 stockerShareBps) external onlyRole(OPERATOR_ROLE) {
+  function restockTrack(uint8 trackId, uint256 additionalStock) external onlyRole(OPERATOR_ROLE) {
     _validateTrackId(trackId);
     if (additionalStock == 0) revert InvalidStock();
-    if (stockerShareBps > 10000) revert InvalidAmount(); // Cannot exceed 100%
 
     uint256 newStock = tracks[trackId].stock + additionalStock;
     if (newStock > MAX_STOCK_PER_TRACK) revert InvalidStock();
 
-    // Update stock
     tracks[trackId].stock = newStock;
-    
-    // Update stocker to the person who restocked
-    address previousStocker = tracks[trackId].product.stockerAddress;
-    if (previousStocker != msg.sender) {
-      tracks[trackId].product.stockerAddress = msg.sender;
-      emit StockerChanged(trackId, previousStocker, msg.sender);
-    }
-    
-    // Update stocker share
-    tracks[trackId].product.stockerShareBps = stockerShareBps;
 
-    emit TrackRestocked(trackId, additionalStock, msg.sender);
+    emit TrackRestocked(trackId, additionalStock);
   }
 
   function setTrackPrice(uint8 trackId, uint256 dollarPrice) external onlyRole(OPERATOR_ROLE) {
@@ -183,9 +166,7 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
       treasuryDistributor.onPurchase(
         recipient != address(0) ? recipient : msg.sender,
         token,
-        price,
-        track.product.stockerShareBps,
-        track.product.stockerAddress
+        price
       );
     }
 
@@ -252,11 +233,6 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
 
     // Only overwrite product if not empty
     if (bytes(product.name).length > 0 || bytes(product.imageURI).length > 0) {
-      // Validate stocker address
-      if (product.stockerAddress == address(0)) revert ZeroAddress();
-      // Validate stocker share is not more than 100%
-      if (product.stockerShareBps > 10000) revert InvalidAmount();
-      
       tracks[trackId].product = product;
     }
     tracks[trackId].stock = stock;

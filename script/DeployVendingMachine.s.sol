@@ -20,8 +20,6 @@ contract DeployVendingMachine is Script {
     string ipfsHash;
     uint256 stock;
     uint256 price;
-    uint256 stockerShareBps;
-    address stockerAddress;
   }
 
   function run() external returns (VendingMachine vendingMachine, address voteToken) {
@@ -42,9 +40,7 @@ contract DeployVendingMachine is Script {
     for (uint256 i = 0; i < config.products.length; i++) {
       initialProducts[i] = IVendingMachine.Product(
         config.products[i].name, 
-        config.products[i].ipfsHash,
-        config.products[i].stockerShareBps,
-        config.products[i].stockerAddress
+        config.products[i].ipfsHash
       );
       initialStocks[i] = config.products[i].stock;
       initialPrices[i] = config.products[i].price;
@@ -123,19 +119,6 @@ contract DeployVendingMachine is Script {
       config.products[i].stock = vm.parseJsonUint(json, string.concat(basePath, '.stock'));
       config.products[i].price = vm.parseJsonUint(json, string.concat(basePath, '.price'));
       
-      // Try to parse stockerShareBps, default to 2000 (20%) if not present
-      try vm.parseJsonUint(json, string.concat(basePath, '.stockerShareBps')) returns (uint256 share) {
-        config.products[i].stockerShareBps = share;
-      } catch {
-        config.products[i].stockerShareBps = 2000; // Default 20%
-      }
-      
-      // Try to parse stockerAddress, must be provided
-      try vm.parseJsonAddress(json, string.concat(basePath, '.stockerAddress')) returns (address stocker) {
-        config.products[i].stockerAddress = stocker;
-      } catch {
-        revert('stockerAddress must be provided for each product');
-      }
     }
 
     validateConfig(config);

@@ -11,14 +11,10 @@ interface IVendingMachine {
    * @notice Product information structure
    * @param name Product name
    * @param imageURI IPFS or HTTP URI for product image
-   * @param stockerShareBps Stocker's revenue share in basis points (e.g., 2000 = 20%)
-   * @param stockerAddress Address that receives stocker share for this product
    */
   struct Product {
     string name;
     string imageURI;
-    uint256 stockerShareBps;
-    address stockerAddress;
   }
 
   /**
@@ -79,17 +75,8 @@ interface IVendingMachine {
    * @notice Emitted when a track is restocked
    * @param trackId The track that was restocked
    * @param additionalStock Amount of stock added
-   * @param newStocker The address that restocked and becomes the new stocker
    */
-  event TrackRestocked(uint8 indexed trackId, uint256 additionalStock, address indexed newStocker);
-
-  /**
-   * @notice Emitted when a track's stocker changes
-   * @param trackId The track whose stocker changed
-   * @param previousStocker The previous stocker address
-   * @param newStocker The new stocker address
-   */
-  event StockerChanged(uint8 indexed trackId, address indexed previousStocker, address indexed newStocker);
+  event TrackRestocked(uint8 indexed trackId, uint256 additionalStock);
 
   /**
    * @notice Emitted when a track's price is set
@@ -147,13 +134,12 @@ interface IVendingMachine {
   ) external;
 
   /**
-   * @notice Add stock to an existing track and become the stocker
-   * @dev Only callable by OPERATOR_ROLE. The caller becomes the new stocker for this track.
+   * @notice Add stock to an existing track
+   * @dev Only callable by OPERATOR_ROLE
    * @param trackId Track to restock
    * @param additionalStock Amount to add (new total must not exceed MAX_STOCK_PER_TRACK)
-   * @param stockerShareBps Revenue share for the stocker in basis points (e.g., 2000 = 20%)
    */
-  function restockTrack(uint8 trackId, uint256 additionalStock, uint256 stockerShareBps) external;
+  function restockTrack(uint8 trackId, uint256 additionalStock) external;
 
   /**
    * @notice Set the price for a track
@@ -222,4 +208,10 @@ interface IVendingMachine {
    * @return The token address at the given index
    */
   function acceptedTokenList(uint256 index) external view returns (address);
+  
+  /**
+   * @notice Get all accepted tokens
+   * @return Array of accepted token addresses
+   */
+  function getAcceptedTokens() external view returns (address[] memory);
 }

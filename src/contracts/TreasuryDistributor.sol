@@ -11,7 +11,7 @@ import {Initializable} from '@openzeppelin/contracts/proxy/utils/Initializable.s
 
 /**
  * @title TreasuryDistributor
- * @notice Distributes vending machine revenue to vote token holders with per-product stocker shares
+ * @notice Distributes vending machine revenue to vote token holders with a stocker share
  * @dev Uses cycle-based distribution with pre-calculated revenue splits
  */
 contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializable {
@@ -21,16 +21,17 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
   IVoteToken public voteToken;
   IVendingMachine public vendingMachine;
   uint256 public cycleLength;
+  address public stockerAddress;
+  uint256 public stockerShareBps; // Basis points (e.g., 2000 = 20%)
+
   address[] public currentBuyers;
-  address[] public stockersWithRevenue; // Track stockers that have revenue this cycle
   
   mapping(address => uint256) public eligibleBalance;
   mapping(address => uint256) public lastIncludedBalance;
   mapping(address => bool) public isInCurrentCycle;
-  mapping(address => mapping(address => uint256)) public stockerRevenue; // stocker => token => amount
-  mapping(address => uint256) public consumerRevenue;
+  mapping(address => uint256) public stockerRevenue; // token => amount
+  mapping(address => uint256) public consumerRevenue; // token => amount
   mapping(address => bool) public isAllowedToken;
-  mapping(address => bool) public hasStockerRevenue; // track which stockers have revenue
 
   uint256 public totalEligible;
   uint256 public currentCycle;
@@ -40,19 +41,27 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
    * @notice Initializes the treasury distributor
    * @param _voteToken The vote token used for calculating distributions
    * @param _vendingMachine The vending machine contract
+   * @param _stockerAddress The address that receives stocker share
+   * @param _stockerShareBps The stocker's revenue share in basis points
    * @param _cycleLength The distribution cycle length in seconds
    */
   function initialize(
     address _voteToken,
     address _vendingMachine,
+    address _stockerAddress,
+    uint256 _stockerShareBps,
     uint256 _cycleLength
   ) external initializer {
     if (_voteToken == address(0)) revert InvalidAddress();
     if (_vendingMachine == address(0)) revert InvalidAddress();
+    if (_stockerAddress == address(0)) revert InvalidAddress();
+    if (_stockerShareBps > 10000) revert InvalidAmount();
     if (_cycleLength == 0) revert InvalidCycleLength();
 
     voteToken = IVoteToken(_voteToken);
     vendingMachine = IVendingMachine(_vendingMachine);
+    stockerAddress = _stockerAddress;
+    stockerShareBps = _stockerShareBps;
     cycleLength = _cycleLength;
     
     // Sync allowed tokens with vending machine
@@ -67,8 +76,6 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
    */
   function _syncAllowedTokens() internal {
     // Get accepted tokens directly from vending machine
-    // The vending machine has acceptedTokenList as a public array
-    // We need to query it to get all accepted tokens
     uint256 i = 0;
     while (true) {
       try vendingMachine.acceptedTokenList(i) returns (address token) {
@@ -88,16 +95,12 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
   function onPurchase(
     address buyer,
     address token,
-    uint256 amount,
-    uint256 stockerShareBps,
-    address stockerAddress
+    uint256 amount
   ) external override {
     if (msg.sender != address(vendingMachine)) revert NotAuthorized();
     if (buyer == address(0)) revert InvalidAddress();
     if (!isAllowedToken[token]) revert InvalidAddress();
     if (amount == 0) revert InvalidAmount();
-    if (stockerShareBps > 10000) revert InvalidAmount();
-    if (stockerAddress == address(0)) revert InvalidAddress();
 
     // Add buyer to current cycle if not already added
     if (!isInCurrentCycle[buyer]) {
@@ -119,15 +122,7 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
     uint256 stockerAmount = (amount * stockerShareBps) / 10000;
     uint256 consumerAmount = amount - stockerAmount;
     
-    // Track revenue for specific stocker
-    if (stockerAmount > 0) {
-      // Add to stockersWithRevenue array if not already added
-      if (!hasStockerRevenue[stockerAddress]) {
-        stockersWithRevenue.push(stockerAddress);
-        hasStockerRevenue[stockerAddress] = true;
-      }
-      stockerRevenue[stockerAddress][token] += stockerAmount;
-    }
+    stockerRevenue[token] += stockerAmount;
     consumerRevenue[token] += consumerAmount;
 
     emit PurchaseTracked(buyer, token, amount, stockerAmount, consumerAmount);
@@ -141,7 +136,7 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
 
     uint256 buyerCount = currentBuyers.length;
     
-    // Distribute revenue to stockers
+    // Distribute revenue to stocker
     _distributeStockerRevenue();
     
     // Distribute revenue to consumers
@@ -155,27 +150,16 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
   }
 
   /**
-   * @notice Internal function to distribute revenue to all stockers
+   * @notice Internal function to distribute revenue to stocker
    */
   function _distributeStockerRevenue() internal {
-    for (uint256 i = 0; i < stockersWithRevenue.length; i++) {
-      address stocker = stockersWithRevenue[i];
-      _distributeToStocker(stocker);
-    }
-  }
-
-  /**
-   * @notice Internal function to distribute revenue to a specific stocker
-   * @param stocker The stocker address to pay
-   */
-  function _distributeToStocker(address stocker) internal {
     for (uint256 j = 0; j < _getAcceptedTokenCount(); j++) {
       address token = vendingMachine.acceptedTokenList(j);
-      uint256 stockerAmount = stockerRevenue[stocker][token];
+      uint256 stockerAmount = stockerRevenue[token];
       
       if (stockerAmount > 0) {
-        _transferRevenue(token, stocker, stockerAmount);
-        emit StockerPaid(stocker, token, stockerAmount);
+        _transferRevenue(token, stockerAddress, stockerAmount);
+        emit StockerPaid(stockerAddress, token, stockerAmount);
       }
     }
   }
@@ -197,8 +181,6 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
    * @notice Internal function to collect consumer revenue from vending machine
    */
   function _collectConsumerRevenue() internal {
-    // Iterate through all tokens that have consumer revenue
-    // We don't need to maintain allowedTokens array since we track via consumerRevenue mapping
     for (uint256 i = 0; i < _getAcceptedTokenCount(); i++) {
       address token = vendingMachine.acceptedTokenList(i);
       uint256 consumerAmount = consumerRevenue[token];
@@ -284,34 +266,17 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
     delete currentBuyers;
     totalEligible = 0;
     
-    // Reset stocker revenue tracking
-    _resetStockerRevenue();
-    
-    // Reset consumer revenue tracking
-    _resetConsumerRevenue();
+    // Reset revenue tracking
+    _resetRevenue();
   }
 
   /**
-   * @notice Internal function to reset stocker revenue tracking
+   * @notice Internal function to reset revenue tracking
    */
-  function _resetStockerRevenue() internal {
-    for (uint256 i = 0; i < stockersWithRevenue.length; i++) {
-      address stocker = stockersWithRevenue[i];
-      for (uint256 j = 0; j < _getAcceptedTokenCount(); j++) {
-        address token = vendingMachine.acceptedTokenList(j);
-        delete stockerRevenue[stocker][token];
-      }
-      delete hasStockerRevenue[stocker];
-    }
-    delete stockersWithRevenue;
-  }
-
-  /**
-   * @notice Internal function to reset consumer revenue tracking
-   */
-  function _resetConsumerRevenue() internal {
+  function _resetRevenue() internal {
     for (uint256 i = 0; i < _getAcceptedTokenCount(); i++) {
       address token = vendingMachine.acceptedTokenList(i);
+      delete stockerRevenue[token];
       delete consumerRevenue[token];
     }
   }
@@ -364,24 +329,10 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
   }
 
   /**
-   * @notice Gets accumulated stocker revenue for a specific stocker and token
-   * @param stocker The stocker address
-   * @param token The token address
+   * @notice Gets accumulated stocker revenue for a token
    */
-  function getStockerRevenue(address stocker, address token) external view returns (uint256) {
-    return stockerRevenue[stocker][token];
-  }
-  
-  /**
-   * @notice Gets total stocker revenue for a token across all stockers
-   * @param token The token address
-   */
-  function getTotalStockerRevenue(address token) external view returns (uint256) {
-    uint256 total = 0;
-    for (uint256 i = 0; i < stockersWithRevenue.length; i++) {
-      total += stockerRevenue[stockersWithRevenue[i]][token];
-    }
-    return total;
+  function getStockerRevenue(address token) external view override returns (uint256) {
+    return stockerRevenue[token];
   }
 
   /**
@@ -426,12 +377,5 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
       tokens[i] = vendingMachine.acceptedTokenList(i);
     }
     return tokens;
-  }
-  
-  /**
-   * @notice Gets the list of stockers with revenue in current cycle
-   */
-  function getStockersWithRevenue() external view returns (address[] memory) {
-    return stockersWithRevenue;
   }
 }

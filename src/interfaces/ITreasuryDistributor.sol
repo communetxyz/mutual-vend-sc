@@ -53,15 +53,11 @@ interface ITreasuryDistributor {
    * @param buyer Address of the purchaser
    * @param token Payment token used
    * @param amount Payment amount
-   * @param stockerShareBps Product's stocker share in basis points
-   * @param stockerAddress Address that receives stocker share for this product
    */
   function onPurchase(
     address buyer,
     address token,
-    uint256 amount,
-    uint256 stockerShareBps,
-    address stockerAddress
+    uint256 amount
   ) external;
 
   /**
@@ -89,12 +85,11 @@ interface ITreasuryDistributor {
   function getCurrentBuyerCount() external view returns (uint256);
 
   /**
-   * @notice Gets accumulated stocker revenue for a specific stocker and token
-   * @param stocker Stocker address
+   * @notice Gets accumulated stocker revenue for a token
    * @param token Token address
    * @return uint256 Stocker revenue amount
    */
-  function getStockerRevenue(address stocker, address token) external view returns (uint256);
+  function getStockerRevenue(address token) external view returns (uint256);
 
   /**
    * @notice Gets accumulated consumer revenue for a token
