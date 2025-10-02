@@ -38,10 +38,7 @@ contract DeployVendingMachine is Script {
     uint256[] memory initialPrices = new uint256[](config.products.length);
 
     for (uint256 i = 0; i < config.products.length; i++) {
-      initialProducts[i] = IVendingMachine.Product(
-        config.products[i].name, 
-        config.products[i].ipfsHash
-      );
+      initialProducts[i] = IVendingMachine.Product(config.products[i].name, config.products[i].ipfsHash);
       initialStocks[i] = config.products[i].stock;
       initialPrices[i] = config.products[i].price;
     }
@@ -118,7 +115,6 @@ contract DeployVendingMachine is Script {
       config.products[i].ipfsHash = vm.parseJsonString(json, string.concat(basePath, '.ipfsHash'));
       config.products[i].stock = vm.parseJsonUint(json, string.concat(basePath, '.stock'));
       config.products[i].price = vm.parseJsonUint(json, string.concat(basePath, '.price'));
-      
     }
 
     validateConfig(config);

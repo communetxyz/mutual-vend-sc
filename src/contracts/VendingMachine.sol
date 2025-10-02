@@ -18,7 +18,7 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
   uint8 public immutable NUM_TRACKS;
   uint256 public immutable MAX_STOCK_PER_TRACK;
   VoteToken public immutable voteToken;
-  address[] public acceptedTokenList;
+  address[] private acceptedTokenList;
   
   ITreasuryDistributor public treasuryDistributor;
 
@@ -161,9 +161,9 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
       voteToken.mint(recipient, price);
     }
 
-    // Notify treasury distributor if configured and there's a recipient
+    // Notify treasury distributor if there's a recipient
     // Skip revenue sharing if no vote tokens were minted (recipient is address(0))
-    if (address(treasuryDistributor) != address(0) && recipient != address(0)) {
+    if (recipient != address(0)) {
       treasuryDistributor.onPurchase(
         recipient,
         token,

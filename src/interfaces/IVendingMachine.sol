@@ -201,13 +201,6 @@ interface IVendingMachine {
    * @return Array of all tracks
    */
   function getAllTracks() external view returns (Track[] memory);
-
-  /**
-   * @notice Get accepted token at specific index
-   * @param index The index in the accepted token list
-   * @return The token address at the given index
-   */
-  function acceptedTokenList(uint256 index) external view returns (address);
   
   /**
    * @notice Get all accepted tokens

@@ -21,36 +21,48 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
   IVoteToken public voteToken;
   IVendingMachine public vendingMachine;
   uint256 public cycleLength;
+  uint256 public distributionPercentageBps; // Percentage in basis points (e.g., 8000 = 80%)
 
   address[] public currentBuyers;
   
   mapping(address => uint256) public eligibleBalance;
   mapping(address => uint256) public lastIncludedBalance;
   mapping(address => bool) public isInCurrentCycle;
-  mapping(address => uint256) public revenue; // token => amount
+  mapping(address => uint256) public distributableRevenue; // token => amount for distribution
+  mapping(address => uint256) public retainedRevenue; // token => amount retained for owner
 
   uint256 public totalEligible;
   uint256 public currentCycle;
   uint256 public lastCycleTimestamp;
+
+  uint256 private constant MAX_BPS = 10000; // 100% in basis points
+  
+  address private _owner;
 
   /**
    * @notice Initializes the treasury distributor
    * @param _voteToken The vote token used for calculating distributions
    * @param _vendingMachine The vending machine contract
    * @param _cycleLength The distribution cycle length in seconds
+   * @param _distributionPercentageBps Percentage of revenue to distribute (in basis points)
    */
   function initialize(
     address _voteToken,
     address _vendingMachine,
-    uint256 _cycleLength
+    uint256 _cycleLength,
+    uint256 _distributionPercentageBps
   ) external initializer {
     if (_voteToken == address(0)) revert InvalidAddress();
     if (_vendingMachine == address(0)) revert InvalidAddress();
     if (_cycleLength == 0) revert InvalidCycleLength();
+    if (_distributionPercentageBps > MAX_BPS) revert InvalidPercentage();
 
+    _owner = msg.sender;
+    
     voteToken = IVoteToken(_voteToken);
     vendingMachine = IVendingMachine(_vendingMachine);
     cycleLength = _cycleLength;
+    distributionPercentageBps = _distributionPercentageBps;
     
     lastCycleTimestamp = block.timestamp;
     currentCycle = 1;
@@ -70,26 +82,38 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
     if (msg.sender != address(vendingMachine)) revert NotAuthorized();
     
     // Add buyer to current cycle if not already added
-    if (!isInCurrentCycle[buyer]) {
+    bool isNewBuyer = !isInCurrentCycle[buyer];
+    if (isNewBuyer) {
       currentBuyers.push(buyer);
       isInCurrentCycle[buyer] = true;
     }
 
-    // Get buyer's current vote token balance (already includes new tokens)
+    // Get buyer's current vote token balance (already includes new tokens from this purchase)
     uint256 currentBalance = voteToken.balanceOf(buyer);
     
-    // Calculate new eligible balance
-    // eligibleBalance = current balance - what was already included in distributions
-    uint256 newEligible = currentBalance - lastIncludedBalance[buyer];
+    // Calculate the buyer's total eligible balance for this cycle
+    // This is their current balance minus what was already distributed in previous cycles
+    uint256 newTotalEligible = currentBalance - lastIncludedBalance[buyer];
     
     // Update total eligible supply
-    totalEligible = totalEligible - eligibleBalance[buyer] + newEligible;
-    eligibleBalance[buyer] = newEligible;
+    // Only subtract old eligible if buyer was already in this cycle
+    if (!isNewBuyer) {
+      totalEligible = totalEligible - eligibleBalance[buyer];
+    }
+    totalEligible = totalEligible + newTotalEligible;
+    
+    // Store the buyer's new total eligible balance
+    eligibleBalance[buyer] = newTotalEligible;
 
-    // Track revenue for distribution
-    revenue[token] += amount;
+    // Split revenue between distributable and retained
+    uint256 distributedAmount = (amount * distributionPercentageBps) / MAX_BPS;
+    uint256 retained = amount - distributedAmount;
 
-    emit PurchaseTracked(buyer, token, amount, 0, amount);
+    // Track revenue for distribution and retention
+    distributableRevenue[token] += distributedAmount;
+    retainedRevenue[token] += retained;
+
+    emit PurchaseTracked(buyer, token, amount, distributedAmount, retained);
   }
 
   /**
@@ -97,39 +121,70 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
    */
   function distribute() external override nonReentrant {
     if (!isCycleComplete()) revert CycleNotComplete();
-
-    uint256 buyerCount = currentBuyers.length;
     
-    // Distribute revenue to consumers
-    _distributeRevenue();
+    // Store count before it's cleared to emit correct event data
+    uint256 previousBuyerCount = currentBuyers.length;
+    
+    // Only distribute if there are eligible buyers
+    if (totalEligible > 0 && previousBuyerCount > 0) {
+      // First, collect all revenue from vending machine
+      _collectRevenue();
+      
+      // Then distribute to each buyer
+      _distributeToBuyers(previousBuyerCount);
+    }
     
     // Reset state for new cycle
     _resetCycleState();
     
     // Start new cycle
-    _startNewCycle(buyerCount);
+    _startNewCycle(previousBuyerCount);
   }
 
   /**
-   * @notice Internal function to distribute revenue
+   * @notice Updates the distribution percentage
+   * @param newPercentageBps New percentage in basis points
    */
-  function _distributeRevenue() internal {
-    if (totalEligible == 0) return;
+  function setDistributionPercentage(uint256 newPercentageBps) external override {
+    if (msg.sender != _owner) revert NotAuthorized();
+    if (newPercentageBps > MAX_BPS) revert InvalidPercentage();
     
-    // First, collect all revenue from vending machine
-    _collectRevenue();
+    uint256 oldPercentage = distributionPercentageBps;
+    distributionPercentageBps = newPercentageBps;
     
-    // Then distribute to each buyer
-    _distributeToBuyers();
+    emit DistributionPercentageUpdated(oldPercentage, newPercentageBps);
   }
 
   /**
-   * @notice Internal function to collect revenue from vending machine
+   * @notice Withdraws retained revenue
+   * @param token Token to withdraw
+   * @param recipient Address to receive the funds
+   */
+  function withdrawRetainedRevenue(address token, address recipient) external override {
+    if (msg.sender != _owner) revert NotAuthorized();
+    if (recipient == address(0)) revert InvalidAddress();
+    
+    uint256 amount = retainedRevenue[token];
+    if (amount == 0) revert NoRevenueToWithdraw();
+    
+    retainedRevenue[token] = 0;
+    
+    // Collect retained revenue from vending machine
+    IERC20(token).safeTransferFrom(address(vendingMachine), address(this), amount);
+    
+    // Transfer retained revenue to recipient
+    IERC20(token).safeTransfer(recipient, amount);
+    emit RetainedRevenueWithdrawn(token, amount, recipient);
+  }
+
+  /**
+   * @notice Internal function to collect distributable revenue from vending machine
    */
   function _collectRevenue() internal {
-    for (uint256 i = 0; i < _getAcceptedTokenCount(); i++) {
-      address token = vendingMachine.acceptedTokenList(i);
-      uint256 amount = revenue[token];
+    address[] memory tokens = vendingMachine.getAcceptedTokens();
+    for (uint256 i = 0; i < tokens.length; i++) {
+      address token = tokens[i];
+      uint256 amount = distributableRevenue[token];
       
       if (amount > 0) {
         IERC20(token).safeTransferFrom(address(vendingMachine), address(this), amount);
@@ -139,10 +194,9 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
 
   /**
    * @notice Internal function to distribute revenue to all buyers
+   * @param buyerCount The number of buyers in the current cycle
    */
-  function _distributeToBuyers() internal {
-    uint256 buyerCount = currentBuyers.length;
-    
+  function _distributeToBuyers(uint256 buyerCount) internal {
     for (uint256 i = 0; i < buyerCount; i++) {
       address buyer = currentBuyers[i];
       _distributeToBuyer(buyer);
@@ -176,9 +230,10 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
    * @param sharePercent The buyer's share percentage (scaled by 1e18)
    */
   function _distributeTokenShareToBuyer(address buyer, uint256 sharePercent) internal {
-    for (uint256 j = 0; j < _getAcceptedTokenCount(); j++) {
-      address token = vendingMachine.acceptedTokenList(j);
-      uint256 tokenRevenue = revenue[token];
+    address[] memory tokens = vendingMachine.getAcceptedTokens();
+    for (uint256 j = 0; j < tokens.length; j++) {
+      address token = tokens[j];
+      uint256 tokenRevenue = distributableRevenue[token];
       
       if (tokenRevenue > 0) {
         uint256 tokenShare = (tokenRevenue * sharePercent) / 1e18;
@@ -199,33 +254,13 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
     delete currentBuyers;
     totalEligible = 0;
     
-    // Reset revenue tracking
-    _resetRevenue();
-  }
-
-  /**
-   * @notice Internal function to reset revenue tracking
-   */
-  function _resetRevenue() internal {
-    for (uint256 i = 0; i < _getAcceptedTokenCount(); i++) {
-      address token = vendingMachine.acceptedTokenList(i);
-      delete revenue[token];
+    // Reset distributable revenue tracking
+    address[] memory tokens = vendingMachine.getAcceptedTokens();
+    for (uint256 i = 0; i < tokens.length; i++) {
+      delete distributableRevenue[tokens[i]];
     }
   }
 
-  /**
-   * @notice Internal function to get the count of accepted tokens from vending machine
-   */
-  function _getAcceptedTokenCount() internal view returns (uint256 count) {
-    // Count tokens by trying to access the array until it reverts
-    while (true) {
-      try vendingMachine.acceptedTokenList(count) returns (address) {
-        count++;
-      } catch {
-        break;
-      }
-    }
-  }
 
   /**
    * @notice Internal function to start a new cycle
@@ -261,17 +296,24 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
   }
 
   /**
-   * @notice Gets accumulated stocker revenue for a token (deprecated - always returns 0)
+   * @notice Gets the current distribution percentage
    */
-  function getStockerRevenue(address) external pure override returns (uint256) {
-    return 0;
+  function getDistributionPercentage() external view override returns (uint256) {
+    return distributionPercentageBps;
   }
 
   /**
-   * @notice Gets accumulated consumer revenue for a token
+   * @notice Gets accumulated distributable revenue for a token
    */
-  function getConsumerRevenue(address token) external view override returns (uint256) {
-    return revenue[token];
+  function getDistributableRevenue(address token) external view override returns (uint256) {
+    return distributableRevenue[token];
+  }
+
+  /**
+   * @notice Gets retained revenue for a token
+   */
+  function getRetainedRevenue(address token) external view override returns (uint256) {
+    return retainedRevenue[token];
   }
 
   /**
@@ -303,11 +345,13 @@ contract TreasuryDistributor is ITreasuryDistributor, ReentrancyGuard, Initializ
    * @notice Gets the list of allowed tokens from the vending machine
    */
   function getAllowedTokens() external view returns (address[] memory) {
-    uint256 count = _getAcceptedTokenCount();
-    address[] memory tokens = new address[](count);
-    for (uint256 i = 0; i < count; i++) {
-      tokens[i] = vendingMachine.acceptedTokenList(i);
-    }
-    return tokens;
+    return vendingMachine.getAcceptedTokens();
+  }
+
+  /**
+   * @notice Gets the contract owner address
+   */
+  function owner() external view override returns (address) {
+    return _owner;
   }
 }
