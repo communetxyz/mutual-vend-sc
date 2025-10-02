@@ -201,4 +201,10 @@ interface IVendingMachine {
    * @return Array of all tracks
    */
   function getAllTracks() external view returns (Track[] memory);
+  
+  /**
+   * @notice Get all accepted tokens
+   * @return Array of accepted token addresses
+   */
+  function getAcceptedTokens() external view returns (address[] memory);
 }

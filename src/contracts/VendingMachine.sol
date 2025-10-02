@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {IVendingMachine} from '../interfaces/IVendingMachine.sol';
+import {ITreasuryDistributor} from '../interfaces/ITreasuryDistributor.sol';
 import {VoteToken} from './VoteToken.sol';
 import {AccessControl} from '@openzeppelin/contracts/access/AccessControl.sol';
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
@@ -17,7 +18,9 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
   uint8 public immutable NUM_TRACKS;
   uint256 public immutable MAX_STOCK_PER_TRACK;
   VoteToken public immutable voteToken;
-  address[] public acceptedTokenList;
+  address[] private acceptedTokenList;
+  
+  ITreasuryDistributor public treasuryDistributor;
 
   mapping(uint8 => Track) private tracks;
   mapping(address => bool) private acceptedTokens;
@@ -158,6 +161,16 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
       voteToken.mint(recipient, price);
     }
 
+    // Notify treasury distributor if there's a recipient
+    // Skip revenue sharing if no vote tokens were minted (recipient is address(0))
+    if (recipient != address(0)) {
+      treasuryDistributor.onPurchase(
+        recipient,
+        token,
+        price
+      );
+    }
+
     emit ItemVended(trackId, msg.sender, token, 1, price);
 
     return price;
@@ -206,6 +219,10 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
 
   function getAcceptedTokens() external view returns (address[] memory) {
     return acceptedTokenList;
+  }
+
+  function setTreasuryDistributor(address _distributor) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    treasuryDistributor = ITreasuryDistributor(_distributor);
   }
 
   function _validateTrackId(uint8 trackId) private view {
