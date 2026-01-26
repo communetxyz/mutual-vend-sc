@@ -53,7 +53,8 @@ contract DeployVendingMachine is Script {
       config.acceptedTokens,
       initialProducts,
       initialStocks,
-      initialPrices
+      initialPrices,
+      address(0) // treasury distributor will be set separately
     );
 
     voteToken = address(vendingMachine.voteToken());
