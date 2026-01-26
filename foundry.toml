@@ -13,6 +13,9 @@ solc_version = '0.8.23'
 libs = ['node_modules', 'lib']
 optimizer_runs = 10_000
 fs_permissions = [{ access = "read", path = "./config" }]
+remappings = [
+  'forge-std/=lib/forge-std/src/'
+]
 
 [profile.optimized]
 via_ir = true

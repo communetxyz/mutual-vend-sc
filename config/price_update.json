@@ -1,0 +1,16 @@
+{
+  "priceUpdates": [
+    {
+      "trackId": 0,
+      "newPrice": "2000000000000000000"
+    },
+    {
+      "trackId": 1,
+      "newPrice": "2500000000000000000"
+    },
+    {
+      "trackId": 2,
+      "newPrice": "1750000000000000000"
+    }
+  ]
+}

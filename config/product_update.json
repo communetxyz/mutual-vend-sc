@@ -1,0 +1,19 @@
+{
+  "productUpdates": [
+    {
+      "trackId": 0,
+      "name": "Premium Snacks Mix",
+      "imageURI": "ipfs://QmNewImageHash1"
+    },
+    {
+      "trackId": 1,
+      "name": "Chocolate Delights",
+      "imageURI": "ipfs://QmNewImageHash2"
+    },
+    {
+      "trackId": 2,
+      "name": "Healthy Energy Bars",
+      "imageURI": "ipfs://QmNewImageHash3"
+    }
+  ]
+}

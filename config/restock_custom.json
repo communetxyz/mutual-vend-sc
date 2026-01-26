@@ -1,0 +1,16 @@
+{
+  "restockItems": [
+    {
+      "trackId": 0,
+      "additionalStock": 6
+    },
+    {
+      "trackId": 1,
+      "additionalStock": 7
+    },
+    {
+      "trackId": 2,
+      "additionalStock": 1
+    }
+  ]
+}
