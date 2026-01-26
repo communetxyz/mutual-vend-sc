@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {ITreasuryDistributor} from '../interfaces/ITreasuryDistributor.sol';
 import {IVendingMachine} from '../interfaces/IVendingMachine.sol';
 import {VoteToken} from './VoteToken.sol';
 import {AccessControl} from '@openzeppelin/contracts/access/AccessControl.sol';
@@ -11,17 +12,35 @@ import {ReentrancyGuard} from '@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
   using SafeERC20 for IERC20;
 
+  /// @inheritdoc IVendingMachine
   bytes32 public constant OPERATOR_ROLE = keccak256('OPERATOR_ROLE');
+  /// @inheritdoc IVendingMachine
   bytes32 public constant TREASURY_ROLE = keccak256('TREASURY_ROLE');
 
+  /// @inheritdoc IVendingMachine
   uint8 public immutable NUM_TRACKS;
+  /// @inheritdoc IVendingMachine
   uint256 public immutable MAX_STOCK_PER_TRACK;
+  /// @notice Vote token issued to purchasers
   VoteToken public immutable voteToken;
+  /// @inheritdoc IVendingMachine
   address[] public acceptedTokenList;
+  /// @inheritdoc IVendingMachine
+  address public treasuryDistributor;
 
   mapping(uint8 => Track) private tracks;
   mapping(address => bool) private acceptedTokens;
 
+  /// @notice Initializes the vending machine with tracks, tokens, and optional treasury distributor
+  /// @param _numTracks Number of tracks in the machine
+  /// @param _maxStockPerTrack Maximum stock per track
+  /// @param _voteTokenName Name for the vote token
+  /// @param _voteTokenSymbol Symbol for the vote token
+  /// @param _initialAcceptedTokens Initial list of accepted payment tokens
+  /// @param _initialProducts Initial products to load into tracks
+  /// @param _initialStocks Initial stock levels for tracks
+  /// @param _initialPrices Initial prices for tracks
+  /// @param _treasuryDistributor Optional treasury distributor address (can be zero address)
   constructor(
     uint8 _numTracks,
     uint256 _maxStockPerTrack,
@@ -30,7 +49,8 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     address[] memory _initialAcceptedTokens,
     Product[] memory _initialProducts,
     uint256[] memory _initialStocks,
-    uint256[] memory _initialPrices
+    uint256[] memory _initialPrices,
+    address _treasuryDistributor
   ) {
     if (_numTracks == 0) revert InvalidTrackCount();
     if (_maxStockPerTrack == 0) revert InvalidStock();
@@ -71,6 +91,12 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     _grantRole(OPERATOR_ROLE, msg.sender);
     _grantRole(TREASURY_ROLE, msg.sender);
+
+    // Set treasury distributor if provided (can be EOA or contract)
+    if (_treasuryDistributor != address(0)) {
+      treasuryDistributor = _treasuryDistributor;
+      _grantRole(TREASURY_ROLE, _treasuryDistributor);
+    }
   }
 
   function loadTrack(uint8 trackId, Product memory product, uint256 stock) external onlyRole(OPERATOR_ROLE) {
@@ -139,6 +165,21 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
     }
   }
 
+  /// @inheritdoc IVendingMachine
+  function setTreasuryDistributor(address _treasuryDistributor) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    if (_treasuryDistributor == address(0)) revert ZeroAddress();
+
+    // Revoke role from previous treasury distributor
+    if (treasuryDistributor != address(0)) {
+      _revokeRole(TREASURY_ROLE, treasuryDistributor);
+    }
+
+    treasuryDistributor = _treasuryDistributor;
+
+    // Grant TREASURY_ROLE to the new distributor (can be EOA or contract)
+    _grantRole(TREASURY_ROLE, _treasuryDistributor);
+  }
+
   function vendFromTrack(uint8 trackId, address token, address recipient) external nonReentrant returns (uint256) {
     _validateTrackId(trackId);
     if (!acceptedTokens[token]) revert TokenNotAccepted();
@@ -158,30 +199,52 @@ contract VendingMachine is IVendingMachine, ReentrancyGuard, AccessControl {
       voteToken.mint(recipient, price);
     }
 
+    // Try to notify treasury distributor of purchase (if it's a contract)
+    if (treasuryDistributor != address(0)) {
+      // Check if treasury is a contract before trying to call it
+      address treasury = treasuryDistributor;
+      uint256 codeSize;
+      assembly {
+        codeSize := extcodesize(treasury)
+      }
+
+      if (codeSize > 0) {
+        // It's a contract, try to notify it
+        try ITreasuryDistributor(treasury).onPurchase(recipient, price) {
+        // Successfully notified
+        }
+          catch {
+          // Silent fail - enables EOA treasury compatibility
+        }
+      }
+      // If it's an EOA (codeSize == 0), we simply don't call it
+    }
+
     emit ItemVended(trackId, msg.sender, token, 1, price);
 
     return price;
   }
 
-  function withdrawRevenue(
-    address[] calldata tokens,
-    address to,
-    uint256[] calldata amounts
-  ) external onlyRole(TREASURY_ROLE) {
+  function withdrawRevenue(address to)
+    external
+    onlyRole(TREASURY_ROLE)
+    returns (address[] memory tokens, uint256[] memory amounts)
+  {
     if (to == address(0)) revert ZeroAddress();
-    if (tokens.length != amounts.length) revert ArrayLengthMismatch();
+
+    tokens = acceptedTokenList;
+    amounts = new uint256[](tokens.length);
 
     for (uint256 i = 0; i < tokens.length; i++) {
-      if (tokens[i] == address(0)) revert ZeroAddress();
-      if (amounts[i] == 0) revert InvalidAmount();
-
       uint256 balance = IERC20(tokens[i]).balanceOf(address(this));
-      if (balance < amounts[i]) revert InsufficientBalance();
-
-      IERC20(tokens[i]).safeTransfer(to, amounts[i]);
-
-      emit RevenueWithdrawn(tokens[i], to, amounts[i]);
+      if (balance > 0) {
+        amounts[i] = balance;
+        IERC20(tokens[i]).safeTransfer(to, balance);
+        emit RevenueWithdrawn(tokens[i], to, balance);
+      }
     }
+
+    return (tokens, amounts);
   }
 
   function getTrack(uint8 trackId) external view returns (Track memory) {

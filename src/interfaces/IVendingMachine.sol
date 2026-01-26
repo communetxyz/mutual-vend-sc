@@ -61,6 +61,32 @@ interface IVendingMachine {
   /// @notice Thrown when array parameters have mismatched lengths
   error ArrayLengthMismatch();
 
+  // State variable getters
+  /// @notice Role identifier for operators who can manage tracks and tokens
+  /// @return The keccak256 hash of 'OPERATOR_ROLE'
+  function OPERATOR_ROLE() external view returns (bytes32);
+
+  /// @notice Role identifier for treasury management
+  /// @return The keccak256 hash of 'TREASURY_ROLE'
+  function TREASURY_ROLE() external view returns (bytes32);
+
+  /// @notice Number of tracks in the vending machine
+  /// @return Number of tracks
+  function NUM_TRACKS() external view returns (uint8);
+
+  /// @notice Maximum stock allowed per track
+  /// @return Maximum stock per track
+  function MAX_STOCK_PER_TRACK() external view returns (uint256);
+
+  /// @notice Returns the accepted token at the given index
+  /// @param index Index in the acceptedTokenList array
+  /// @return Token address at the given index
+  function acceptedTokenList(uint256 index) external view returns (address);
+
+  /// @notice Address of the treasury distributor (can be EOA or contract)
+  /// @return Treasury distributor address
+  function treasuryDistributor() external view returns (address);
+
   // Events
   /**
    * @notice Emitted when a track is loaded with products
@@ -157,6 +183,13 @@ interface IVendingMachine {
   function configurePaymentTokens(address[] calldata tokens) external;
 
   /**
+   * @notice Set the treasury distributor address
+   * @dev Only callable by DEFAULT_ADMIN_ROLE. Grants TREASURY_ROLE to new distributor
+   * @param _treasuryDistributor New treasury distributor address (can be EOA or contract)
+   */
+  function setTreasuryDistributor(address _treasuryDistributor) external;
+
+  /**
    * @notice Purchase an item from a specific track
    * @dev Transfers payment token, decrements stock, and mints vote tokens
    * @param trackId Track to vend from
@@ -167,13 +200,13 @@ interface IVendingMachine {
   function vendFromTrack(uint8 trackId, address token, address recipient) external returns (uint256);
 
   /**
-   * @notice Withdraw accumulated revenue
-   * @dev Only callable by TREASURY_ROLE. Arrays must be same length
-   * @param tokens Array of token addresses to withdraw
+   * @notice Withdraw all accumulated revenue
+   * @dev Only callable by TREASURY_ROLE. Automatically withdraws full balance of all accepted tokens
    * @param to Recipient address
-   * @param amounts Array of amounts to withdraw for each token
+   * @return tokens Array of token addresses withdrawn
+   * @return amounts Array of amounts withdrawn for each token
    */
-  function withdrawRevenue(address[] calldata tokens, address to, uint256[] calldata amounts) external;
+  function withdrawRevenue(address to) external returns (address[] memory tokens, uint256[] memory amounts);
 
   /**
    * @notice Get complete track information
@@ -201,4 +234,10 @@ interface IVendingMachine {
    * @return Array of all tracks
    */
   function getAllTracks() external view returns (Track[] memory);
+
+  /**
+   * @notice Get list of accepted payment tokens
+   * @return Array of accepted token addresses
+   */
+  function getAcceptedTokens() external view returns (address[] memory);
 }
