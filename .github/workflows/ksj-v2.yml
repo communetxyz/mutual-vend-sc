@@ -1,0 +1,17 @@
+name: KSJ four-compartment contracts
+on:
+  push:
+    branches: [feat/ksj-four-compartment-v2]
+    paths: ['src/ksj/**', 'test/ksj/**', 'foundry.toml', '.github/workflows/ksj-v2.yml']
+  pull_request:
+    paths: ['src/ksj/**', 'test/ksj/**', 'foundry.toml', '.github/workflows/ksj-v2.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init lib/openzeppelin-contracts
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: FOUNDRY_PROFILE=ksj forge test -vv
