@@ -21,3 +21,6 @@ broadcast/*/*/*
 # Out dir
 out
 crytic-export
+
+# KSJ V2 isolated build
+out-ksj/

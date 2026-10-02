@@ -35,3 +35,10 @@ sepolia = "${SEPOLIA_RPC}"
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}" }
 sepolia = { key = "${ETHERSCAN_API_KEY}" }
+
+# Isolated four-compartment pilot: no dependency on the legacy application tests.
+[profile.ksj]
+src = 'src/ksj'
+test = 'test/ksj'
+script = 'script/ksj'
+out = 'out-ksj'
